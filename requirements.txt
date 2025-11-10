@@ -1,0 +1,6 @@
+pandas
+numpy
+TA-Lib
+PyYAML
+openai
+ccxt
