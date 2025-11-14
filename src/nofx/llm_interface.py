@@ -58,7 +58,7 @@ class LLMInterface(BaseClassWithLogger):
         for decision in decisions:
             action = Action.from_dict(decision)
 
-            if action is None:
+            if not action:
                 self.logger.warning(f"⚠️ 无效的JSON格式:\n{decision}")
                 continue
 

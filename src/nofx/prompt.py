@@ -72,7 +72,7 @@ class PromptManager(BaseClassWithLogger):
         if len(positions) > 0:
             parts.append("## 当前持仓")
             for i, position in enumerate(positions):
-                position_str = position.format()
+                position_str = position.format(ctx.current_time)
                 market_data_str = market_data[position.symbol].format(span=self.history_span)
                 parts.append(f"{i+1:d}. {position_str:s}\n市场信息:\n{market_data_str:s}")
                 symbols_used.append(position.symbol)
@@ -88,9 +88,7 @@ class PromptManager(BaseClassWithLogger):
                 market_data_str = market_data[symbol].format(span=self.history_span)
                 parts.append(f"{i+1:d}. {symbol:s} 市场信息:\n{market_data_str:s}")
 
-        #TODO(Xinyu): add Sharpe ratio analysis
-        # parts.extend([f"## 📊 当前夏普比率: %.2f", "现在请分析并输出决策 (思维链 + JSON)"])
-        parts.append("现在请分析并输出决策 (思维链 + JSON)")
+        parts.extend([f"## 📊 当前夏普比率: {ctx.performance.sharpe_ratio:.2f}", "现在请分析并输出决策 (思维链 + JSON)"])
 
         return "\n\n".join(parts)
 

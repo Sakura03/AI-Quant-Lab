@@ -101,7 +101,7 @@ class ActionFilter(BaseClassWithLogger):
                     open_position = position
                     break
 
-            if open_position is None:
+            if not open_position:
                 return f"{action.symbol:s}的仓位不存在"
 
             if (

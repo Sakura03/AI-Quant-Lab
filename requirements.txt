@@ -4,3 +4,4 @@ TA-Lib
 PyYAML
 openai
 ccxt
+empyrical-reloaded

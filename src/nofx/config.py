@@ -110,10 +110,11 @@ class BacktestConfig(BaseConfig):
 
 @dataclass
 class TraderConfig(BaseConfig):
-    REQUIRED_FIELDS = ["mode", "timeframe", "symbols"]
+    REQUIRED_FIELDS = ["mode", "timeframe", "save_folder", "symbols"]
 
     mode: str
     timeframe: str
+    save_folder: str
     symbols: List[str] = field(default_factory=list)
 
     @classmethod

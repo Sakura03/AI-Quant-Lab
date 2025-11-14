@@ -140,6 +140,49 @@ def parse_dataframe(data_path: str) -> Optional[pd.DataFrame]:
     return df
 
 
+def infer_timeframe(df: pd.DataFrame) -> pd.Timedelta:
+    """
+        根据 timestamp 列推断 DataFrame 的时间周期（如 1m, 5m, 4h 等）
+        返回一个 pandas.Timedelta
+    """
+    if "timestamp" not in df.columns:
+        raise ValueError("DataFrame须包含'timestamp'列")
+
+    ts = df["timestamp"].sort_values().drop_duplicates()
+
+    if len(ts) < 2:
+        raise ValueError("DataFrame至多只有一行数据")
+
+    # 计算相邻时间差
+    diffs = ts.diff().dropna()
+
+    # 取最常出现的 diff 作为时间周期
+    return diffs.mode().iloc[0]
+
+
+def truncate_dataframe(df: pd.DataFrame, time: pd.Timestamp, limit: Optional[int] = None) -> pd.DataFrame:
+    """
+        截取 DataFrame 中 timestamp <= time 的部分，并取最后 limit 行
+
+        参数:
+            df: 包含 "timestamp" 列的 pandas DataFrame
+            time: pd.Timestamp, 用于筛选时间
+            limit: int, 限制返回的行数, 若为 None, 则不限制
+
+        返回:
+            pd.DataFrame: 截取后的新 DataFrame
+    """
+    if "timestamp" not in df.columns:
+        raise ValueError("DataFrame须包含'timestamp'列")
+
+    timeframe = infer_timeframe(df)
+
+    # 过滤出 timestamp <= time 的行
+    filtered = df[df["timestamp"] <= time - timeframe]
+
+    return filtered.tail(limit) if limit else filtered
+
+
 def fetch_lastest_data(df: pd.DataFrame, time: pd.Timestamp, cols: List[str]) -> List[Any]:
     """
         从 DataFrame 中获取指定时间点 (time) 之前最新一条可用的数据
@@ -160,32 +203,13 @@ def fetch_lastest_data(df: pd.DataFrame, time: pd.Timestamp, cols: List[str]) ->
     if "timestamp" not in df.columns:
         raise ValueError("DataFrame须包含'timestamp'列")
 
-    # 过滤出 timestamp <= time 的行
-    filtered = df[df["timestamp"] <= time]
+    filtered = truncate_dataframe(df, time)
 
     if len(filtered) == 0:
         return [None for _ in cols]
 
     # 取最后一行的 close 值
     return filtered.iloc[-1][cols].values.tolist()
-
-
-def truncate_dataframe(df: pd.DataFrame, time: pd.Timestamp, limit: int) -> pd.DataFrame:
-    """
-        截取 DataFrame 中 timestamp <= time 的部分，并取最后 limit 行
-
-        参数:
-            df: 包含 "timestamp" 列的 pandas DataFrame
-            time: pd.Timestamp, 用于筛选时间
-            limit: int, 限制返回的行数
-
-        返回:
-            pd.DataFrame: 截取后的新 DataFrame
-    """
-    if "timestamp" not in df.columns:
-        raise ValueError("DataFrame须包含'timestamp'列")
-
-    return df[df["timestamp"] <= time].tail(limit).reset_index(drop=True)
 
 
 def calculate_liquidation_price(side: PositionSide, entry_price: float, leverage: int) -> float:

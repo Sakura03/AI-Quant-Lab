@@ -142,7 +142,7 @@ class Exchange(BaseClassWithLogger):
         elif action.type in [ActionType.CloseLong, ActionType.CloseShort]:
             # fetch current position
             position = self.get_position(action.symbol)
-            if position is None:
+            if not position:
                 self.warning(f"平仓失败: {action.symbol}的仓位不存在")
                 return
 

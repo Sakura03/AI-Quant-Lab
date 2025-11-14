@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Optional, Any
 
 import pandas as pd
@@ -59,6 +59,9 @@ class Balance:
             available_balance=float(data["availableBalance"]),
         )
 
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
 
 @dataclass
 class Position:
@@ -76,7 +79,7 @@ class Position:
 
     meta: Dict[str, Any] = field(default_factory=dict)
 
-    def format(self) -> str:
+    def format(self, current_time: pd.Timestamp) -> str:
         parts = [
             f"{self.symbol:s} {self.side.name:s}",
             f"入场价: {self.entry_price:.4e}",
@@ -90,7 +93,7 @@ class Position:
             parts.append(f"强平价: {self.liquidation_price:.4e}")
 
         if self.entry_time:
-            holding_seconds = int((pd.Timestamp.utcnow().tz_localize(None) - self.entry_time).total_seconds())
+            holding_seconds = int((current_time - self.entry_time).total_seconds())
             parts.append("持仓时间: " + format_time_interval(holding_seconds))
 
         return " | ".join(parts)
@@ -112,6 +115,16 @@ class Position:
             liquidation_price=float(data["liquidationPrice"]) if data["liquidationPrice"] is not None else None,
             margin_used=float(data["initialMargin"]),
         )
+
+    def to_dict(self) -> Dict[str, Any]:
+        ret = asdict(self)
+
+        # 转成可序列化的格式
+        ret["side"] = self.side.name
+        if self.entry_time:
+            ret["entry_time"] = self.entry_time.strftime("%Y-%m-%d %H:%M:%S")
+
+        return ret
 
 
 @dataclass
@@ -157,6 +170,16 @@ class ClosedPosition:
 
         return " | ".join(parts)
 
+    def to_dict(self) -> Dict[str, Any]:
+        ret = asdict(self)
+
+        # 转成可序列化的格式
+        ret["side"] = self.side.name
+        ret["entry_time"] = self.entry_time.strftime("%Y-%m-%d %H:%M:%S")
+        ret["exit_time"] = self.exit_time.strftime("%Y-%m-%d %H:%M:%S")
+
+        return ret
+
 
 @dataclass
 class SymbolData:
@@ -190,7 +213,7 @@ class SymbolData:
         for tf in timeframes:
             pct_change = self.calculate_pct_change(tf)
             if pct_change is not None:
-                results.append(f"{tf:s}: {pct_change:+.2f}")
+                results.append(f"{tf:s}: {pct_change:+.2f}%")
 
         if len(results) == 0:
             return ""
@@ -227,6 +250,8 @@ class Context:
     balance: Balance
     positions: List[Position]
     market_data: MarketData
+
+    performance: Metrics
 
 
 @dataclass
@@ -292,3 +317,34 @@ class Action:
             confidence=int(data["confidence"]),
             reasoning=str(data["reasoning"]),
         )
+
+    def to_dict(self) -> Dict[str, Any]:
+        ret = asdict(self)
+
+        # 转成可序列化的格式
+        ret["type"] = self.type.name
+
+        return ret
+
+
+@dataclass
+class Metrics:
+    annual_return: float = 0.0
+    sharpe_ratio: float = 0.0
+    sortino_ratio: float = 0.0
+    calmar_ratio: float = 0.0
+    max_drawdown: float = 0.0
+
+    def format(self) -> str:
+        parts = [
+            f"年化收益率: {self.annual_return*100:.2f}%",
+            f"夏普比率: {self.sharpe_ratio:.2f}",
+            f"索提诺比率: {self.sortino_ratio:.2f}",
+            f"卡玛比率: {self.calmar_ratio:.2f}",
+            f"最大回撤: {self.max_drawdown*100:.2f}%",
+        ]
+
+        return " | ".join(parts)
+
+    def to_dict(self) -> Dict[str, float]:
+        return asdict(self)

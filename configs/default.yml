@@ -30,8 +30,9 @@ backtest:
   data_folder: "data"
 
 trader:
-  mode: "backtest"  # choices: ["backtest", "live"]
+  mode: "live"  # choices: ["backtest", "live"]
   timeframe: "4h"
+  save_folder: "results/default"
   # symbols: ["BTC/USDT", "ETH/USDT"]
   symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "SUI/USDT"]
   # symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "DOGE/USDT", "ADA/USDT", "AAVE/USDT", "SUI/USDT", "1000PEPE/USDT"]
