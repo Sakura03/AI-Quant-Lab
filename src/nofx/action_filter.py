@@ -75,13 +75,17 @@ class ActionFilter(BaseClassWithLogger):
             if action.position_size_usd < 0.0:
                 return f"负仓位: ({action.position_size_usd:.2f} USDT)"
 
+            mark_price = ctx.market_data[action.symbol].mark_price
+            amount = action.position_size_usd / mark_price
+            if amount < 0.001:
+                return f"仓位 ({amount:.4f}) 小于交易所的最小精度 (0.001)"
+
             if available_balance < action.position_size_usd / action.leverage:
                 return f"保证金不足 (可用保证金: {available_balance:.2f} USDT, 仓位: {action.position_size_usd:.2f} USDT, 杠杆: {action.leverage:d}x)"
 
             if action.stop_loss < 0.0 or action.take_profit < 0.0:
                 return f"止损价或止盈价为负 (止损价: {action.stop_loss:.4e}, 止盈价: {action.stop_loss:.4e})"
 
-            mark_price = ctx.market_data[action.symbol].mark_price
             if (
                 (action.type == ActionType.OpenLong and not action.stop_loss < mark_price < action.take_profit) or \
                 (action.type == ActionType.OpenShort and not action.take_profit < mark_price < action.stop_loss)

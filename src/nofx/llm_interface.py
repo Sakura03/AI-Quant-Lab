@@ -7,6 +7,7 @@ from openai import OpenAI
 
 from .logger import BaseClassWithLogger
 from .structs import Action
+from .utils import retry
 
 
 class LLMInterface(BaseClassWithLogger):
@@ -21,22 +22,19 @@ class LLMInterface(BaseClassWithLogger):
         else:
             raise NotImplementedError(f"未知模型: {model}")
 
+    @retry(max_retries=3, delay=5.0, output="")
     def call_client(self, system_prompt: str, user_prompt: str) -> str:
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=self.temperature,
-                stream=False,
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            self.exception(f"⚠️ 大语言模型调用失败: {e}")
-            return ""
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=self.temperature,
+            stream=False,
+        )
+        return response.choices[0].message.content
 
     def parse_ai_response(self, text: str) -> Tuple[str, List[Action]]:
         # 提取 <reasoning> ... </reasoning>

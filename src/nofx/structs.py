@@ -53,10 +53,11 @@ class Balance:
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> Balance:
+        info = data["info"]
         return Balance(
-            total_wallet_balance=float(data["totalWalletBalance"]),
-            total_unrealized_profit=float(data["totalUnrealizedProfit"]),
-            available_balance=float(data["availableBalance"]),
+            total_wallet_balance=float(info["totalWalletBalance"]),
+            total_unrealized_profit=float(info["totalUnrealizedProfit"]),
+            available_balance=float(info["availableBalance"]),
         )
 
     def to_dict(self) -> Dict[str, Any]:

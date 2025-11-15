@@ -55,14 +55,14 @@ def add_indicator(df: pd.DataFrame, indicator_param: Dict[str, Any]):
         df[tenkan], df[kijun], df[senkou_a], df[senkou_b] = ichimoku(df["high"], df["low"], **params)
 
     else:
-        raise NotImplementedError(f"未知的技术指标: {name}")
+        raise NotImplementedError(f"未知的技术指标: {name:s}")
 
 
 def add_indicators(market_data: MarketData, indicators: Dict[str, Any]):
     for symbol, symbol_data in market_data.items():
         for timeframe, params in indicators.items():
             if timeframe not in symbol_data.data:
-                raise KeyError(f"{symbol}缺失时间周期{timeframe}的数据")
+                raise KeyError(f"{symbol:s}缺失时间周期{timeframe:s}的数据")
 
             df = symbol_data.data[timeframe]
             for param in params:

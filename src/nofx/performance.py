@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import empyrical as emp
 
@@ -24,10 +25,11 @@ class PerformanceAnalyzer:
         # 计算每日收益率
         returns = self.balance["equity"].pct_change().dropna()
 
+        nan_to_zero = lambda x: float(0.0 if np.isnan(x) or np.isinf(x) else x)
         return Metrics(
-            annual_return=float(emp.annual_return(returns, annualization=self.annualization)),
-            sharpe_ratio=float(emp.sharpe_ratio(returns, annualization=self.annualization)),
-            sortino_ratio=float(emp.sortino_ratio(returns, annualization=self.annualization)),
-            calmar_ratio=float(emp.calmar_ratio(returns, annualization=self.annualization)),
-            max_drawdown=float(emp.max_drawdown(returns)),
+            annual_return=nan_to_zero(emp.annual_return(returns, annualization=self.annualization)),
+            sharpe_ratio=nan_to_zero(emp.sharpe_ratio(returns, annualization=self.annualization)),
+            sortino_ratio=nan_to_zero(emp.sortino_ratio(returns, annualization=self.annualization)),
+            calmar_ratio=nan_to_zero(emp.calmar_ratio(returns, annualization=self.annualization)),
+            max_drawdown=nan_to_zero(emp.max_drawdown(returns)),
         )
