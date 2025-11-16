@@ -40,6 +40,22 @@ class AutoTrader(BaseClassWithLogger):
         self.save_folder = self.config.trader.save_folder
         os.makedirs(self.save_folder, exist_ok=True)
 
+        if self.mode == "live":
+            self.start_time = pd.Timestamp.utcnow().tz_localize(None)
+            # init exchange
+            self.exchange = Exchange(**self.config.exchange.to_dict(), logger=self.logger)
+            self.initial_balance = self.exchange.get_balance().total_wallet_balance
+            order_restricts = {symbol: self.exchange.fetch_order_restricts(symbol) for symbol in self.symbols}
+        elif self.mode == "backtest":
+            self.start_time = self.config.backtest.start_time
+            self.end_time = self.config.backtest.end_time
+            # init backtest manager
+            self.backtest_manager = BacktestManger(**self.config.backtest.to_dict(), symbols=self.symbols, indicators=self.indicators, logger=self.logger)
+            self.initial_balance = self.config.backtest.initial_balance
+            order_restricts = {symbol: (0.001, 10.0) for symbol in self.symbols}
+        else:
+            raise ValueError(f"不支持的模式: '{self.mode:s}'")
+
         # init prompt manager
         self.prompt_manager = PromptManager(**self.config.prompt.to_dict(), run_timeframe=self.run_timeframe, logger=self.logger)
 
@@ -47,24 +63,10 @@ class AutoTrader(BaseClassWithLogger):
         self.llm_interface = LLMInterface(**self.config.llm.to_dict(), logger=self.logger)
 
         # init action filter
-        self.action_filter = ActionFilter(**self.config.prompt.to_dict(), logger=self.logger)
+        self.action_filter = ActionFilter(**self.config.prompt.to_dict(), restricts=order_restricts, logger=self.logger)
 
         # init performance analyzer
         self.performance_analyzer = PerformanceAnalyzer(self.run_timeframe)
-
-        if self.mode == "live":
-            self.start_time = pd.Timestamp.utcnow().tz_localize(None)
-            # init exchange
-            self.exchange = Exchange(**self.config.exchange.to_dict(), logger=self.logger)
-            self.initial_balance = self.exchange.get_balance().total_wallet_balance
-        elif self.mode == "backtest":
-            self.start_time = self.config.backtest.start_time
-            self.end_time = self.config.backtest.end_time
-            # init backtest manager
-            self.backtest_manager = BacktestManger(**self.config.backtest.to_dict(), symbols=self.symbols, indicators=self.indicators, logger=self.logger)
-            self.initial_balance = self.config.backtest.initial_balance
-        else:
-            raise ValueError(f"不支持的模式: '{self.mode:s}'")
 
     """ Live Trader """
     def next_run_time(self) -> pd.Timestamp:
@@ -99,7 +101,7 @@ class AutoTrader(BaseClassWithLogger):
             try:
                 self.run_cycle()
             except Exception as e:
-                self.exception(f"❌ run_cycle 异常: {e}")
+                self.warning(f"❌ run_cycle 异常: {e}")
                 time.sleep(5)  # 短暂冷却防止异常死循环
 
     """ Backtester """
@@ -126,7 +128,7 @@ class AutoTrader(BaseClassWithLogger):
             try:
                 self.run_cycle()
             except Exception as e:
-                self.exception(f"❌ run_cycle 异常: {e}")
+                self.warning(f"❌ run_cycle 异常: {e}")
 
         self.backtest_manager.finish()
         self.backtest_manager.analyze()

@@ -1,6 +1,5 @@
-from typing import List, Dict, Optional, Any
+from typing import Tuple, List, Dict, Optional, Any
 
-import time
 import logging
 import ccxt
 import pandas as pd
@@ -16,21 +15,33 @@ class Exchange(BaseClassWithLogger):
         super().__init__(logger=logger)
 
         params = {
-            'apiKey': api_key,
-            'secret': secret,
-            'enableRateLimit': enable_rate_limit,  # 自动限速
+            "apiKey": api_key,
+            "secret": secret,
+            "enableRateLimit": enable_rate_limit,  # 自动限速
             "options": {"defaultType": "future"},
         }
 
         if name == "binance":
-            self.exchange = ccxt.binance(params)
+            self.exchange = ccxt.binanceusdm(params)
 
             if sandbox:
                 self.exchange.set_sandbox_mode(True)  # 切换到测试网
         else:
             raise NotImplementedError(f"未知的交易所: {name:s}")
 
+        self.exchange.load_markets()
+
     """ CCXT Interface """
+    @retry(max_retries=3, delay=1.0, output=(0.001, 10.0))
+    def fetch_order_restricts(self, symbol: str) -> Tuple[float, float]:
+        """
+            获取订单的最小交易数量 (以币为单位) 和最小名义价值
+        """
+        market = self.exchange.market(symbol)
+        min_amount = market["limits"]["amount"]["min"]
+        min_notional = market["limits"]["cost"]["min"]
+        return (min_amount, min_notional)
+
     @retry(max_retries=3, delay=1.0, raise_if_fail=True)
     def get_balance(self) -> Optional[Balance]:
         balance = self.exchange.fetch_balance()

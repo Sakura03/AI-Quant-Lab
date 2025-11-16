@@ -49,7 +49,7 @@ class LLMInterface(BaseClassWithLogger):
             try:
                 decisions = json.loads(decision_str)
             except json.JSONDecodeError as e:
-                self.logger.exception(f"⚠️ 解析JSON文件失败: {e}")
+                self.logger.warning(f"⚠️ 解析JSON文件失败: {e}")
                 self.logger.warning(f"原始JSON字符串为:\n{decision_str:s}")
 
         actions = []

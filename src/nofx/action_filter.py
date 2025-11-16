@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Tuple, List, Dict, Optional
 
 import logging
 
@@ -16,13 +16,15 @@ class ActionFilter(BaseClassWithLogger):
         ActionType.DoNothing: 2,
     }
 
-    def __init__(self, r_ratio: float, altcoin_leverage: int, BTC_ETH_leverage: int, max_positions: int, logger: Optional[logging.Logger] = None, **kwargs):
+    def __init__(self, r_ratio: float, altcoin_leverage: int, BTC_ETH_leverage: int, max_positions: int, restricts: Dict[str, Tuple[float, float]], logger: Optional[logging.Logger] = None, **kwargs):
         super().__init__(logger=logger)
 
         self.r_ratio = r_ratio * 0.6  # Hack here: do not restrict R-ratio too strictly
         self.altcoin_leverage = altcoin_leverage
         self.BTC_ETH_leverage = BTC_ETH_leverage
         self.max_positions = max_positions
+
+        self.restricts = restricts
 
     def __call__(self, actions: List[Action], ctx: Context) -> List[Action]:
         actions = self.sort_actions(actions)
@@ -76,9 +78,15 @@ class ActionFilter(BaseClassWithLogger):
                 return f"负仓位: ({action.position_size_usd:.2f} USDT)"
 
             mark_price = ctx.market_data[action.symbol].mark_price
-            amount = action.position_size_usd / mark_price
-            if amount < 0.001:
-                return f"仓位 ({amount:.4f}) 小于交易所的最小精度 (0.001)"
+            if action.symbol in self.restricts:
+                min_amount, min_notional = self.restricts[action.symbol]
+                amount = action.position_size_usd / mark_price
+                if amount < min_amount:
+                    return f"{action.symbol:s}的仓位 ({amount:.4f}) 小于最小仓位 ({min_amount:.4f})"
+                real_amount = int(amount / min_amount) * min_amount
+                notional = real_amount * mark_price
+                if notional < min_notional:
+                    return f"{action.symbol:s}的名义价值 ({notional:.2f} USDT) 小于最小名义价值 ({min_notional:.2f} USDT)"
 
             if available_balance < action.position_size_usd / action.leverage:
                 return f"保证金不足 (可用保证金: {available_balance:.2f} USDT, 仓位: {action.position_size_usd:.2f} USDT, 杠杆: {action.leverage:d}x)"
@@ -92,11 +100,11 @@ class ActionFilter(BaseClassWithLogger):
             ):
                 return f"止损价或止盈价无效 (决策: {action.type.name:s}, 当前标记价格: {mark_price:.4e}, 止损价: {action.stop_loss:.4e}, 止盈价: {action.take_profit:.4e})"
 
-            risk_pct = abs(action.stop_loss - mark_price) / mark_price
-            reward_pct = abs(mark_price - action.take_profit) / mark_price
-            r_ratio = reward_pct / risk_pct
-            if r_ratio < self.r_ratio:
-                return f"盈亏比过低 (决策: {action.type.name:s}, 当前标记价格: {mark_price:.4e}, 止损价: {action.stop_loss:.4e}, 止盈价: {action.take_profit:.4e}, 潜在亏损: {risk_pct*100:.1f}%, 潜在盈利: {reward_pct*100:.1f}%, 盈亏比: {r_ratio:.2f})"
+            # risk_pct = abs(action.stop_loss - mark_price) / mark_price
+            # reward_pct = abs(mark_price - action.take_profit) / mark_price
+            # r_ratio = reward_pct / risk_pct
+            # if r_ratio < self.r_ratio:
+            #     return f"盈亏比过低 (决策: {action.type.name:s}, 当前标记价格: {mark_price:.4e}, 止损价: {action.stop_loss:.4e}, 止盈价: {action.take_profit:.4e}, 潜在亏损: {risk_pct*100:.1f}%, 潜在盈利: {reward_pct*100:.1f}%, 盈亏比: {r_ratio:.2f})"
 
         if action.type in [ActionType.CloseLong, ActionType.CloseShort]:
             open_position = None
