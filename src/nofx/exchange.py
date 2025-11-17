@@ -106,7 +106,7 @@ class Exchange(BaseClassWithLogger):
             symbol: str,
             type: str,
             side: str,
-            amount: Optional[float],
+            amount: Optional[float] = None,
             price: Optional[float] = None,
             params: Dict[str, Any] = {}
     ) -> Dict[str, Any]:
@@ -116,6 +116,7 @@ class Exchange(BaseClassWithLogger):
                 if not position:
                     self.warning(f"平仓失败: {symbol:s}的仓位不存在")
                     return {}
+                amount = position.quantity
             else:
                 if position:
                     self.warning(f"开仓失败: {symbol:s}的仓位已存在")
@@ -197,7 +198,6 @@ class Exchange(BaseClassWithLogger):
             symbol=action.symbol,
             type="TAKE_PROFIT_MARKET",
             side="sell" if action.type == ActionType.OpenLong else "buy",
-            amount=None,
             params={
                 "stopPrice": action.take_profit,
                 "closePosition": True
@@ -212,7 +212,6 @@ class Exchange(BaseClassWithLogger):
             symbol=action.symbol,
             type="market",
             side="sell" if action.type == ActionType.CloseLong else "buy",
-            amount=position.quantity,
             params={
                 "reduceOnly": True,  # 仅平仓
             },
