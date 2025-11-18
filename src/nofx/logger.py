@@ -3,6 +3,7 @@ from typing import Optional
 import os
 import os.path as osp
 import logging
+import pandas as pd
 
 
 str_to_level = logging.getLevelNamesMapping()
@@ -21,6 +22,9 @@ def setup_logger(name: str, log_file: Optional[str] = None, level_name: str = "I
 
     # 文件 handler（可选）
     if log_file:
+        if log_file.endswith(".txt"):
+            log_file = log_file[:-4]
+        log_file = log_file + "_" + pd.Timestamp.now().strftime("%Y%m%d_%H%M%S") + ".txt"
         os.makedirs(osp.dirname(log_file), exist_ok=True)
         fh = logging.FileHandler(log_file, encoding='utf-8')
         fh.setFormatter(formatter)

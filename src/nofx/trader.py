@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from typing import List
 
 import os
@@ -25,7 +26,7 @@ class AutoTrader(BaseClassWithLogger):
         self.config = Config.parse_config_file(config_path)
 
         # setup logger
-        logger = setup_logger(**self.config.logger.to_dict())
+        logger = setup_logger(**asdict(self.config.logger))
         super().__init__(logger=logger)
 
         self.symbols = self.config.trader.symbols
@@ -37,36 +38,43 @@ class AutoTrader(BaseClassWithLogger):
         self.run_interval = timeframe_to_seconds(self.run_timeframe)
         self.num_cycle = 0
 
-        self.save_folder = self.config.trader.save_folder
+        self.save_folder = osp.normpath(self.config.trader.save_folder) + "_" + pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
         os.makedirs(self.save_folder, exist_ok=True)
+        self.config.save(osp.join(self.save_folder, "config.yml"))
+
+        # init performance analyzer
+        self.performance_analyzer = PerformanceAnalyzer(self.run_timeframe)
 
         if self.mode == "live":
             self.start_time = pd.Timestamp.utcnow().tz_localize(None)
             # init exchange
-            self.exchange = Exchange(**self.config.exchange.to_dict(), logger=self.logger)
+            self.exchange = Exchange(**asdict(self.config.exchange), logger=self.logger)
             self.initial_balance = self.exchange.get_balance().total_wallet_balance
             order_restricts = {symbol: self.exchange.fetch_order_restricts(symbol) for symbol in self.symbols}
         elif self.mode == "backtest":
             self.start_time = self.config.backtest.start_time
             self.end_time = self.config.backtest.end_time
             # init backtest manager
-            self.backtest_manager = BacktestManger(**self.config.backtest.to_dict(), symbols=self.symbols, indicators=self.indicators, logger=self.logger)
+            self.backtest_manager = BacktestManger(
+                    **asdict(self.config.backtest),
+                    symbols=self.symbols,
+                    indicators=self.indicators,
+                    analyzer=self.performance_analyzer,
+                    logger=self.logger
+            )
             self.initial_balance = self.config.backtest.initial_balance
             order_restricts = {symbol: (0.001, 10.0) for symbol in self.symbols}
         else:
             raise ValueError(f"不支持的模式: '{self.mode:s}'")
 
         # init prompt manager
-        self.prompt_manager = PromptManager(**self.config.prompt.to_dict(), run_timeframe=self.run_timeframe, logger=self.logger)
+        self.prompt_manager = PromptManager(**asdict(self.config.prompt), run_timeframe=self.run_timeframe, logger=self.logger)
 
         # init LLM interface
-        self.llm_interface = LLMInterface(**self.config.llm.to_dict(), logger=self.logger)
+        self.llm_interface = LLMInterface(**asdict(self.config.llm), logger=self.logger)
 
         # init action filter
-        self.action_filter = ActionFilter(**self.config.prompt.to_dict(), restricts=order_restricts, logger=self.logger)
-
-        # init performance analyzer
-        self.performance_analyzer = PerformanceAnalyzer(self.run_timeframe)
+        self.action_filter = ActionFilter(**asdict(self.config.prompt), restricts=order_restricts, logger=self.logger)
 
     """ Live Trader """
     def next_run_time(self) -> pd.Timestamp:
@@ -132,6 +140,7 @@ class AutoTrader(BaseClassWithLogger):
 
         self.backtest_manager.finish()
         self.backtest_manager.analyze()
+        self.backtest_manager.visualize(osp.join(self.save_folder, "viz"))
 
     """ Unified Interface """
     def get_current_time(self) -> pd.Timestamp:
@@ -199,16 +208,21 @@ class AutoTrader(BaseClassWithLogger):
 
     def dump_snapshot(self, actions: List[Action]):
         current_time = self.get_current_time()
+        last_time = current_time - pd.Timedelta(seconds=self.run_interval)
         current_time_str = current_time.strftime("%Y%m%d_%H%M%S")
+        to_dict = lambda x: x.to_dict()
         snapshot = {
-            "time": current_time_str,
+            "time": current_time.strftime("%Y-%m-%d %H:%M:%S"),
             "balance": self.get_balance().to_dict(),
-            "positions": list(map(lambda p: p.to_dict(), self.get_positions())),
-            "actions": list(map(lambda a: a.to_dict(), actions)),
+            "positions": list(map(to_dict, self.get_positions())),
+            "actions": list(map(to_dict, actions)),
             "performance": self.performance_analyzer.get_metrics().to_dict(),
         }
+        if self.mode == "backtest":
+            snapshot["closed_positions"] = list(map(to_dict, self.backtest_manager.get_closed_positions(last_time, current_time)))
 
-        with open(osp.join(self.save_folder, f"snapshot_cycle_{self.num_cycle:05d}_{current_time_str:s}.json"), "w", encoding="utf-8") as f:
+        os.makedirs(osp.join(self.save_folder, "snapshots"), exist_ok=True)
+        with open(osp.join(self.save_folder, "snapshots", f"cycle_{self.num_cycle:05d}_{current_time_str:s}.json"), "w", encoding="utf-8") as f:
             json.dump(snapshot, f, ensure_ascii=False, indent=2)
 
     """ Core function """

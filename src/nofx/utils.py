@@ -162,13 +162,19 @@ def infer_timeframe(df: pd.DataFrame) -> pd.Timedelta:
     return diffs.mode().iloc[0]
 
 
-def truncate_dataframe(df: pd.DataFrame, time: pd.Timestamp, limit: Optional[int] = None) -> pd.DataFrame:
+def truncate_dataframe(
+        df: pd.DataFrame,
+        end_time: pd.Timestamp,
+        start_time: Optional[pd.Timestamp] = None,
+        limit: Optional[int] = None
+) -> pd.DataFrame:
     """
-        截取 DataFrame 中 timestamp <= time 的部分，并取最后 limit 行
+        截取 DataFrame 中 start_time <= timestamp <= end_time 的部分，并取最后 limit 行
 
         参数:
             df: 包含 "timestamp" 列的 pandas DataFrame
-            time: pd.Timestamp, 用于筛选时间
+            end_time: pd.Timestamp, 结束时间
+            start_time: pd.Timestamp, 开始时间, 若为None, 则不做筛选
             limit: int, 限制返回的行数, 若为 None, 则不限制
 
         返回:
@@ -180,7 +186,9 @@ def truncate_dataframe(df: pd.DataFrame, time: pd.Timestamp, limit: Optional[int
     timeframe = infer_timeframe(df)
 
     # 过滤出 timestamp <= time 的行
-    filtered = df[df["timestamp"] <= time - timeframe]
+    filtered = df[df["timestamp"] <= end_time - timeframe]
+    if start_time:
+        filtered = filtered[filtered["timestamp"] > start_time - timeframe]
 
     return filtered.tail(limit) if limit else filtered
 

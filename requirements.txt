@@ -1,5 +1,7 @@
 pandas
 numpy
+matplotlib
+plotly
 TA-Lib
 PyYAML
 openai

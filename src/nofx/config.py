@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, fields, asdict
 from typing import List, Dict, Optional, Any
 
 import os.path as osp
@@ -25,7 +25,14 @@ class BaseConfig:
         return cls(**data)
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if isinstance(value, BaseConfig):
+                data[f.name] = value.to_dict()
+
+        return data
 
     def save(self, path: str):
         """将配置保存为 YAML"""
@@ -107,6 +114,14 @@ class BacktestConfig(BaseConfig):
         config.end_time = pd.to_datetime(config.end_time, format="%Y%m%d-%H%M%S")
 
         return config
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+
+        data["start_time"] = self.start_time.strftime("%Y%m%d-%H%M%S")
+        data["end_time"] = self.end_time.strftime("%Y%m%d-%H%M%S")
+
+        return data
 
 @dataclass
 class TraderConfig(BaseConfig):

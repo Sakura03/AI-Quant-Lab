@@ -8,11 +8,23 @@ from .logger import BaseClassWithLogger
 from .enums import PositionSide, ActionType
 from .structs import Balance, Position, ClosedPosition, SymbolData, MarketData, Action
 from .indicator import add_indicator
+from .performance import PerformanceAnalyzer
 from .utils import parse_dataframe, fetch_lastest_data, truncate_dataframe, calculate_liquidation_price
+from .visualization import visualize_funding_curve, visualize_candle_and_position
 
 
 class BacktestManger(BaseClassWithLogger):
-    def __init__(self, start_time: pd.Timestamp, end_time: pd.Timestamp, initial_balance: pd.Timestamp, data_folder: str, symbols: List[str], indicators: Dict[str, Any], logger: Optional[logging.Logger] = None):
+    def __init__(
+            self,
+            start_time: pd.Timestamp,
+            end_time: pd.Timestamp,
+            initial_balance: float,
+            data_folder: str,
+            symbols: List[str],
+            indicators: Dict[str, Any],
+            analyzer: Optional[PerformanceAnalyzer] = None,
+            logger: Optional[logging.Logger] = None
+    ):
         super().__init__(logger=logger)
 
         self.start_time = start_time
@@ -23,6 +35,7 @@ class BacktestManger(BaseClassWithLogger):
         self.symbols = symbols
         self.timeframes = list(indicators.keys())
         self.indicators = indicators
+        self.analyzer = analyzer
 
         self.last_tick = start_time
         self.balance = Balance(total_wallet_balance=initial_balance, total_unrealized_profit=0.0, available_balance=initial_balance)
@@ -62,6 +75,9 @@ class BacktestManger(BaseClassWithLogger):
     def get_positions(self) -> List[Position]:
         return self.open_positions
 
+    def get_closed_positions(self, start_time: pd.Timestamp, end_time: pd.Timestamp) -> List[ClosedPosition]:
+        return [cp for cp in self.closed_positions if start_time < cp.exit_time <= end_time]
+
     def get_mark_price(self, symbol: str, current_time: pd.Timestamp) -> Optional[float]:
         mark_price, = fetch_lastest_data(self.data_dict[symbol]["1m"], current_time, cols=["close"])
         return float(mark_price) if mark_price is not None else None
@@ -74,7 +90,7 @@ class BacktestManger(BaseClassWithLogger):
                 open_interest=None,
                 funding_rate=None,
                 data={
-                    timeframe: truncate_dataframe(self.data_dict[symbol][timeframe], current_time, limit)
+                    timeframe: truncate_dataframe(self.data_dict[symbol][timeframe], current_time, limit=limit)
                     for timeframe in self.timeframes
                 },
             )
@@ -263,3 +279,17 @@ class BacktestManger(BaseClassWithLogger):
 
         pnl_pct = (self.balance.total_wallet_balance / self.initial_balance - 1.0) * 100
         self.info(f"初始金额: {self.initial_balance:.2f} USDT, 结束金额: {self.balance.total_wallet_balance:.2f} USDT ({pnl_pct:+.1f}%)")
+        if self.analyzer:
+            self.info(self.analyzer.get_metrics().format())
+
+    def visualize(self, save_folder: str):
+        if self.analyzer:
+            visualize_funding_curve(self.analyzer.balance, save_path=osp.join(save_folder, "funding.png"), funding_col="equity")
+
+        visualize_candle_and_position(self.symbols,
+                                      self.timeframes,
+                                      self.start_time,
+                                      self.end_time,
+                                      self.data_dict,
+                                      self.closed_positions,
+                                      save_folder)
