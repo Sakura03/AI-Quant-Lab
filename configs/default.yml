@@ -1,6 +1,6 @@
 logger:
-  name: "default"
-  log_file: "logs/default.txt"
+  name: "lightweight"
+  log_file: "logs/lightweight.txt"
   level_name: "INFO"
 
 exchange:
@@ -16,7 +16,7 @@ prompt:
   max_positions: 3
   altcoin_leverage: 3
   BTC_ETH_leverage: 5
-  history_span: 30
+  history_span: 20
 
 llm:
   model: "deepseek-chat"
@@ -32,7 +32,7 @@ backtest:
 trader:
   mode: "live"  # choices: ["backtest", "live"]
   timeframe: "4h"
-  save_folder: "results/default"
+  save_folder: "results/lightweight"
   # symbols: ["BTC/USDT", "ETH/USDT"]
   symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "SUI/USDT"]
   # symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "DOGE/USDT", "ADA/USDT", "AAVE/USDT", "SUI/USDT", "1000PEPE/USDT"]
@@ -61,7 +61,6 @@ indicators:
       nbdevdn: 2
     display_name:
     - "BBANDS_UPPER"
-    - "BBANDS_MID"
     - "BBANDS_LOWER"
 
   - name: "MACD"
@@ -69,10 +68,7 @@ indicators:
       fastperiod: 12
       slowperiod: 26
       signalperiod: 9
-    display_name:
-    - "DIF"
-    - "DEA"
-    - "MACDHIST"
+    display_name: "MACDHIST"
 
   - name: "RSI"
     params:
@@ -89,28 +85,4 @@ indicators:
       timeperiod: 14
     display_name: "ATR14"
 
-  - name: "KDJ"
-    params:
-      fastk_period: 14
-      slowk_period: 3
-      slowd_period: 3
-    display_name:
-    - "K"
-    - "D"
-    - "J"
-
-  # - name: "ichimoku"
-  #   params:
-  #     conversion_line_period: 9
-  #     base_line_period: 26
-  #     lagging_span: 52
-  #     displacement: 26
-  #   display_name:
-  #   - "TenkanSen"
-  #   - "KijunSen"
-  #   - "SenkouSpanA"
-  #   - "SenkouSpanB"
-
   "4h": "15m"  # use the same indicators as 15m
-
-  "1d": "15m"

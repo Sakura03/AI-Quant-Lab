@@ -5,7 +5,7 @@ from typing import List, Dict, Optional, Any
 import pandas as pd
 
 from .enums import PositionSide, ActionType
-from .utils import timeframe_to_seconds, format_time_interval, format_symbol
+from .utils import timeframe_to_seconds, format_time_interval, format_symbol, infer_period
 
 
 @dataclass
@@ -232,9 +232,11 @@ class SymbolData:
         parts = [text]
         for timeframe, df in self.data.items():
             df = df.tail(span).copy()
-            df["timestamp"] = df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
-            df = df.rename(columns={"timestamp": "date"})
-            parts.append(f"时间周期: {timeframe}\n" + df.to_string(index=False))
+            period = infer_period(df)
+            start_time_str = df["timestamp"].iloc[0].strftime("%Y-%m-%d %H:%M:%S")
+            end_time_str = (df["timestamp"].iloc[-1] + period).strftime("%Y-%m-%d %H:%M:%S")
+            df = df.drop(columns=["timestamp", "open"])
+            parts.append(f"时间周期: {timeframe}, 时间范围: {start_time_str:s} 到 {end_time_str:s} (从上到下)\n" + df.to_string(index=False))
 
         return "\n\n".join(parts)
 

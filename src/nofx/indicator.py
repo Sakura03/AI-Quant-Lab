@@ -32,12 +32,19 @@ def add_indicator(df: pd.DataFrame, indicator_param: Dict[str, Any]):
         df[col] = talib.EMA(df["close"], **params)
 
     elif name == "BBANDS":
-        upper, mid, lower = col
-        df[upper], df[mid], df[lower] = talib.BBANDS(df["close"], **params)
+        if len(col) == 2:
+            upper, lower = col
+            df[upper], _, df[lower] = talib.BBANDS(df["close"], **params)
+        else:
+            upper, mid, lower = col
+            df[upper], df[mid], df[lower] = talib.BBANDS(df["close"], **params)
 
     elif name == "MACD":
-        dif, dea, macd = col
-        df[dif], df[dea], df[macd] = talib.MACD(df["close"], **params)
+        if isinstance(col, str):
+            _, _, df[col] = talib.MACD(df["close"], **params)
+        else:
+            dif, dea, macd = col
+            df[dif], df[dea], df[macd] = talib.MACD(df["close"], **params)
 
     elif name == "RSI":
         df[col] = talib.RSI(df["close"], **params)
