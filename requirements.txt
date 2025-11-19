@@ -5,5 +5,6 @@ plotly
 TA-Lib
 PyYAML
 openai
+tiktoken
 ccxt
 empyrical-reloaded

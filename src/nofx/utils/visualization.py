@@ -10,9 +10,7 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from .enums import PositionSide
-from .structs import ClosedPosition
-from .utils import truncate_dataframe
+from .dataframe import truncate_dataframe
 
 
 def visualize_snapshots(folder: str, symbols: List[str], save_path: str):
@@ -78,13 +76,9 @@ def visualize_candle_and_position(
         start_time: pd.Timestamp,
         end_time: pd.Timestamp,
         data_dict: Dict[str, Dict[str, pd.DataFrame]],
-        closed_positions: List[ClosedPosition],
+        position_data: pd.DataFrame,
         save_folder: str,
 ):
-    closed_positions: Dict[str, List[ClosedPosition]] = {symbol: [] for symbol in symbols}
-    for cp in closed_positions:
-        closed_positions[cp.symbol].append(cp)
-
     for symbol in symbols:
         num = len(timeframes)
         fig = make_subplots(
@@ -96,14 +90,7 @@ def visualize_candle_and_position(
             subplot_titles=timeframes,
         )
 
-        buy_times, buy_prices, sell_times, sell_prices = [], [], [], []
-        for cp in closed_positions[symbol]:
-            buy_times.append(cp.entry_time if cp.side == PositionSide.Long else cp.exit_time)
-            buy_prices.append(cp.entry_price if cp.side == PositionSide.Long else cp.exit_price)
-
-            sell_times.append(cp.exit_time if cp.side == PositionSide.Long else cp.entry_time)
-            sell_prices.append(cp.exit_price if cp.side == PositionSide.Long else cp.entry_price)
-
+        position_df = position_data[position_data["symbol"] == symbol]
         for i, timeframe in enumerate(timeframes):
             df = data_dict[symbol][timeframe]
             df = truncate_dataframe(df, start_time=start_time, end_time=end_time)
@@ -125,8 +112,8 @@ def visualize_candle_and_position(
 
             fig.add_trace(
                 go.Scatter(
-                    x=buy_times,
-                    y=buy_prices,
+                    x=position_df["buy_time"],
+                    y=position_df["buy_price"],
                     mode="markers+text",
                     marker=dict(symbol="triangle-up", color="magenta", size=12),
                     name="buy"
@@ -137,8 +124,8 @@ def visualize_candle_and_position(
 
             fig.add_trace(
                 go.Scatter(
-                    x=sell_times,
-                    y=sell_prices,
+                    x=position_df["sell_time"],
+                    y=position_df["sell_price"],
                     mode="markers+text",
                     marker=dict(symbol="triangle-down", color="royalblue", size=12),
                     name="sell"

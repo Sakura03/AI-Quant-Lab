@@ -1,4 +1,4 @@
-from nofx.visualization import visualize_snapshots
+from nofx.utils import visualize_snapshots
 
 
 if __name__ == "__main__":

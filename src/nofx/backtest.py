@@ -9,8 +9,8 @@ from .enums import PositionSide, ActionType
 from .structs import Balance, Position, ClosedPosition, SymbolData, MarketData, Action
 from .indicator import add_indicator
 from .performance import PerformanceAnalyzer
-from .utils import parse_dataframe, fetch_lastest_data, truncate_dataframe, calculate_liquidation_price
-from .visualization import visualize_funding_curve, visualize_candle_and_position
+from .utils import (parse_dataframe, fetch_lastest_data, truncate_dataframe, calculate_liquidation_price,
+                    visualize_funding_curve, visualize_candle_and_position)
 
 
 class BacktestManger(BaseClassWithLogger):
@@ -107,7 +107,7 @@ class BacktestManger(BaseClassWithLogger):
                 return
 
         side = PositionSide.Long if action.type == ActionType.OpenLong else PositionSide.Short
-        liquidation_price = calculate_liquidation_price(side, entry_price, action.leverage)
+        liquidation_price = calculate_liquidation_price(side == PositionSide.Long, entry_price, action.leverage)
         self.open_positions.append(Position(
             symbol=action.symbol,
             entry_time=current_time,
@@ -286,10 +286,11 @@ class BacktestManger(BaseClassWithLogger):
         if self.analyzer:
             visualize_funding_curve(self.analyzer.balance, save_path=osp.join(save_folder, "funding.png"), funding_col="equity")
 
-        visualize_candle_and_position(self.symbols,
-                                      self.timeframes,
-                                      self.start_time,
-                                      self.end_time,
-                                      self.data_dict,
-                                      self.closed_positions,
-                                      save_folder)
+        position_data = pd.DataFrame(columns=["symbol", "buy_time", "buy_price", "sell_time", "sell_price"])
+        for i, cp in enumerate(self.closed_positions):
+            if cp.side == PositionSide.Long:
+                position_data.loc[i] = [cp.symbol, cp.entry_time, cp.entry_price, cp.exit_time, cp.exit_price]
+            else:
+                position_data.loc[i] = [cp.symbol, cp.exit_time, cp.exit_price, cp.entry_time, cp.entry_price]
+
+        visualize_candle_and_position(self.symbols, self.timeframes, self.start_time, self.end_time, self.data_dict, position_data, save_folder)
