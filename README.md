@@ -1,4 +1,4 @@
-## 配置环境
+# 配置环境
 
 1. 使用 conda 环境: 运行
 ```bash
@@ -13,7 +13,7 @@ pip install -r requirements.txt
 pip install .
 ```
 
-## 更改参数配置
+# 更改参数配置
 参数配置文件在目录 `configs` 下, 以下为配置文件的重要选项:
 - `exchange:api_key`: 交易所的 API Key
 - `exchange:secret`: 交易所的密钥
@@ -30,7 +30,7 @@ pip install .
 - `trader:symbols`: 交易对列表
 - `indicators`: 技术指标 (见以下说明)
 
-# 技术指标参数说明
+## 技术指标参数说明
 
 参数 `indicators` 的格式是
 ```yaml
@@ -49,7 +49,7 @@ display_name: "EMA7"
 - `params`: 技术指标的参数, 以 `"参数名": 参数值` 的字典的形式
 - `display_name`: 技术指标传递给 LLM 时的名称, 如果该技术指标有多个值 (如 MACD), 该参数应为一个列表
 
-# 回测模式专用参数
+## 回测模式专用参数
 - `backtest:start_time`: 回测的开始时间
 - `backtest:end_time`: 回测的结束时间
 - `backtest:data_folder`: 回测数据所在目录
@@ -61,11 +61,11 @@ freqtrade download-data --exchange binance --timeframe 15m 1h 4h 1d --pairs BTC/
 
 将下载的数据移动到 `backtest:data_folder` 目录下
 
-## 运行程序
+# 运行程序
 ```bash
 python main.py
 ```
 
-## 程序输出
+# 程序输出
 - `logs` 目录: log 文件
 - `results` 目录: 每个周期的账户/仓位/决策信息和可视化文件 (回测模式)
