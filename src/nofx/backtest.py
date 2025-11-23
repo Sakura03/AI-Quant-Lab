@@ -63,6 +63,12 @@ class BacktestManger(BaseClassWithLogger):
                     raise FileNotFoundError(f"找不到数据: {data_path:s}")
                 self.data_dict[symbol]["1m"] = df
 
+            data_path = osp.join(data_folder, f"{symbol_:s}-funding-rate.feather")
+            df = parse_dataframe(data_path)
+            if df is None:
+                raise FileNotFoundError(f"找不到数据: {data_path:s}")
+            self.data_dict[symbol]["fundingRate"] = df
+
     def get_balance(self) -> Balance:
         return self.balance
 
@@ -82,13 +88,17 @@ class BacktestManger(BaseClassWithLogger):
         mark_price, = fetch_lastest_data(self.data_dict[symbol]["1m"], current_time, cols=["close"])
         return float(mark_price) if mark_price is not None else None
 
+    def get_funding_rate(self, symbol: str, current_time: pd.Timestamp) -> Optional[float]:
+        funding_rate, = fetch_lastest_data(self.data_dict[symbol]["fundingRate"], current_time, cols=["fundingRate"], available_until_next_period=False)
+        return float(funding_rate) if funding_rate is not None else None
+
     def get_market_data(self, current_time: pd.Timestamp, limit: int = 1000) -> MarketData:
         return {
             symbol: SymbolData(
                 symbol=symbol,
                 mark_price=self.get_mark_price(symbol, current_time),
                 open_interest=None,
-                funding_rate=None,
+                funding_rate=self.get_funding_rate(symbol, current_time),
                 data={
                     timeframe: truncate_dataframe(self.data_dict[symbol][timeframe], current_time, limit=limit)
                     for timeframe in self.timeframes

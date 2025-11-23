@@ -1,6 +1,7 @@
 from typing import Tuple, List, Dict, Optional, Any
 
 import logging
+import time
 import ccxt
 import pandas as pd
 
@@ -29,9 +30,13 @@ class Exchange(BaseClassWithLogger):
         else:
             raise NotImplementedError(f"未知的交易所: {name:s}")
 
-        self.exchange.load_markets()
+        self.load_markets()
 
     """ CCXT Interface """
+    @retry(max_retries=5, delay=5.0, raise_if_fail=True)
+    def load_markets(self):
+        self.exchange.load_markets()
+
     @retry(max_retries=3, delay=1.0, output=(0.001, 10.0))
     def fetch_order_restricts(self, symbol: str) -> Tuple[float, float]:
         """
@@ -70,9 +75,13 @@ class Exchange(BaseClassWithLogger):
 
         return positions
 
-    @retry(max_retries=3, delay=5.0, output=[])
-    def fetch_ohlcv(self, symbol: str, timeframe: str, limit: int = 200) -> List[Any]:
-        return self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+    @retry(max_retries=5, delay=5.0, output=[])
+    def fetch_ohlcv(self, symbol: str, timeframe: str, since: Optional[int] = None, limit: Optional[int] = None, params: Dict[str, Any] = {}) -> List[Any]:
+        return self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since, limit=limit, params=params)
+
+    @retry(max_retries=5, delay=3.0, output=[])
+    def fetch_funding_rate_history(self, symbol: str, since: Optional[int] = None, limit: Optional[int] = None, params: Dict[str, Any] = {}) -> List[Any]:
+        return self.exchange.fetch_funding_rate_history(symbol, since=since, limit=limit, params=params)
 
     @retry(max_retries=3, delay=1.0, raise_if_fail=True)
     def fetch_mark_price(self, symbol: str) -> Optional[float]:
@@ -137,6 +146,71 @@ class Exchange(BaseClassWithLogger):
         ohlcv = self.fetch_ohlcv(symbol=symbol, timeframe=timeframe, limit=limit)
         df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+        return df
+
+    def fetch_history_ohlcv_df(self, symbol: str, timeframe: str, start_time: pd.Timestamp, end_time: pd.Timestamp) -> pd.DataFrame:
+        all_candles = []
+        since = start_time.value // int(1e6)
+        until = end_time.value // int(1e6)
+        limit = 200
+
+        ms = since
+        while True:
+            candles = self.fetch_ohlcv(symbol, timeframe=timeframe, since=ms, limit=limit)
+            if not candles:
+                break
+
+            all_candles.extend(candles)
+
+            first_time = candles[0][0]
+            last_time = candles[-1][0]
+            first_time_str = pd.to_datetime(first_time, unit="ms").strftime("%Y-%m-%d %H:%M:%S")
+            last_time_str = pd.to_datetime(last_time, unit="ms").strftime("%Y-%m-%d %H:%M:%S")
+            self.info(f"[Fetch History OHLCV data][symbol: {symbol:s}][timeframe: {timeframe:s}][time range: {first_time_str:s} to {last_time_str:s}]")
+
+            if last_time >= until:
+                break
+
+            ms = last_time + 1
+            time.sleep(self.exchange.rateLimit / 1000)
+
+        all_candles = [c for c in all_candles if since <= c[0] <= until]
+        df = pd.DataFrame(all_candles, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+        return df
+
+    def fetch_history_funding_rate(self, symbol: str, start_time: pd.Timestamp, end_time: pd.Timestamp) -> pd.DataFrame:
+        all_funding = []
+        since = start_time.value // int(1e6)
+        until = end_time.value // int(1e6)
+        limit = 200
+
+        ms = since
+        while True:
+            data = self.fetch_funding_rate_history(symbol, since=ms, limit=limit)
+            if not data:
+                break
+
+            for funding_rate in data:
+                all_funding.append([funding_rate["timestamp"], funding_rate["fundingRate"]])
+
+            first_time = data[0]["timestamp"]
+            last_time = data[-1]["timestamp"]
+            first_time_str = pd.to_datetime(first_time, unit="ms").strftime("%Y-%m-%d %H:%M:%S")
+            last_time_str = pd.to_datetime(last_time, unit="ms").strftime("%Y-%m-%d %H:%M:%S")
+            self.info(f"[Fetch History Funding Rate][symbol: {symbol:s}][time range: {first_time_str:s} to {last_time_str:s}]")
+
+            if last_time >= until:
+                break
+
+            ms = last_time + 1
+            time.sleep(self.exchange.rateLimit / 1000)
+
+        all_funding = [d for d in all_funding if since <= d[0] <= until]
+        df = pd.DataFrame(all_funding, columns=["timestamp", "fundingRate"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+        # 去掉毫秒级的误差
+        df["timestamp"] = df["timestamp"].dt.floor("s")
         return df
 
     def get_market_data(self, symbols: List[str], timeframes: List[str]) -> MarketData:

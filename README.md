@@ -56,10 +56,12 @@ display_name: "EMA7"
 
 回测数据下载:
 ```bash
-freqtrade download-data --exchange binance --timeframe 15m 1h 4h 1d --pairs BTC/USDT ETH/USDT SOL/USDT SUI/USDT --timerange 20240101-
+python generate_data.py
 ```
 
-将下载的数据移动到 `backtest:data_folder` 目录下
+下载的数据位于目录 `backtest:data_folder`
+
+> 下载数据的币种, 时间周期, 时间段由配置文件决定, 建议第一次下载时数据的时间段覆盖整个回测周期, 这样可以避免重复下载数据
 
 # 运行程序
 ```bash

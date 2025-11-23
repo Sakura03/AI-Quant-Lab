@@ -9,8 +9,7 @@ def parse_dataframe(data_path: str) -> Optional[pd.DataFrame]:
         return None
 
     df = pd.read_feather(data_path)
-    df["date"] = df["date"].dt.tz_localize(None)
-    df = df.rename(columns={"date": "timestamp"})
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
     return df
 
 
@@ -38,7 +37,8 @@ def truncate_dataframe(
         df: pd.DataFrame,
         end_time: pd.Timestamp,
         start_time: Optional[pd.Timestamp] = None,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
+        available_until_next_period: bool = True,
 ) -> pd.DataFrame:
     """
         截取 DataFrame 中 start_time <= timestamp <= end_time 的部分，并取最后 limit 行
@@ -48,6 +48,9 @@ def truncate_dataframe(
             end_time: pd.Timestamp, 结束时间
             start_time: pd.Timestamp, 开始时间, 若为None, 则不做筛选
             limit: int, 限制返回的行数, 若为 None, 则不限制
+            available_until_next_period: bool
+                如果为 True, 则表示 df 中的每一行数据直到下一周期的开始时刻才能得到 (如 OHLCV 数据);
+                否则, 则表示 df 中的每一行数据在本周期的开始时刻就能得到 (如 funding rate数据).
 
         返回:
             pd.DataFrame: 截取后的新 DataFrame
@@ -55,17 +58,21 @@ def truncate_dataframe(
     if "timestamp" not in df.columns:
         raise ValueError("DataFrame须包含'timestamp'列")
 
-    period = infer_period(df)
+    if available_until_next_period:
+        period = infer_period(df)
+        end_time = end_time - period
+        if start_time:
+            start_time = start_time - period
 
     # 过滤出 timestamp <= time 的行
-    filtered = df[df["timestamp"] <= end_time - period]
+    filtered = df[df["timestamp"] <= end_time]
     if start_time:
-        filtered = filtered[filtered["timestamp"] > start_time - period]
+        filtered = filtered[filtered["timestamp"] > start_time]
 
     return filtered.tail(limit) if limit else filtered
 
 
-def fetch_lastest_data(df: pd.DataFrame, time: pd.Timestamp, cols: List[str]) -> List[Any]:
+def fetch_lastest_data(df: pd.DataFrame, time: pd.Timestamp, cols: List[str], available_until_next_period: bool = True) -> List[Any]:
     """
         从 DataFrame 中获取指定时间点 (time) 之前最新一条可用的数据
 
@@ -76,6 +83,8 @@ def fetch_lastest_data(df: pd.DataFrame, time: pd.Timestamp, cols: List[str]) ->
                 要查找的目标时间
             cols : List[str]
                 所要数据的列名
+            available_until_next_period: bool
+                见函数 truncate_dataframe 的说明
 
         返回：
             列表, 列表元素类型:
@@ -85,7 +94,7 @@ def fetch_lastest_data(df: pd.DataFrame, time: pd.Timestamp, cols: List[str]) ->
     if "timestamp" not in df.columns:
         raise ValueError("DataFrame须包含'timestamp'列")
 
-    filtered = truncate_dataframe(df, time)
+    filtered = truncate_dataframe(df, time, available_until_next_period=available_until_next_period)
 
     if len(filtered) == 0:
         return [None for _ in cols]
