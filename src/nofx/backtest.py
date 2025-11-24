@@ -126,14 +126,12 @@ class BacktestManger(BaseClassWithLogger):
             mark_price=entry_price,
             quantity=action.position_size_usd / entry_price,
             leverage=action.leverage,
+            stop_loss=action.stop_loss,
+            take_profit=action.take_profit,
             unrealized_pnl=0.0,
             unrealized_pnl_pct=0.0,
             liquidation_price=liquidation_price,
             margin_used=action.position_size_usd / action.leverage,
-            meta={
-                "stop_loss": action.stop_loss,
-                "take_profit": action.take_profit,
-            },
         ))
 
         # update balance
@@ -224,11 +222,9 @@ class BacktestManger(BaseClassWithLogger):
         # 倒序访问, 防止平仓导致未处理仓位的索引改变
         for i in reversed(range(len(self.open_positions))):
             position = self.open_positions[i]
-            stop_loss = position.meta["stop_loss"] if "stop_loss" in position.meta else None
-            take_profit = position.meta["take_profit"] if "take_profit" in position.meta else None
 
             position_closed = False
-            if stop_loss is not None or take_profit is not None:
+            if position.stop_loss is not None or position.take_profit is not None:
                 df = self.data_dict[position.symbol]["1m"]
                 start_time = max(self.last_tick, position.entry_time)
                 df = df[(df["timestamp"] > start_time) & (df["timestamp"] <= current_time)]
@@ -239,22 +235,22 @@ class BacktestManger(BaseClassWithLogger):
                     exit_price, reason = None, None
                     # Consider the worst case: stop loss occurs ahead of take profit
                     if (
-                        stop_loss is not None and \
+                        position.stop_loss is not None and \
                         (
-                            (position.side == PositionSide.Long and low < stop_loss) or \
-                            (position.side == PositionSide.Short and high > stop_loss)
+                            (position.side == PositionSide.Long and low < position.stop_loss) or \
+                            (position.side == PositionSide.Short and high > position.stop_loss)
                         )
                     ):
-                        exit_price = position.meta["stop_loss"]
+                        exit_price = position.stop_loss
                         reason = "止损"
                     elif (
-                        take_profit is not None and \
+                        position.take_profit is not None and \
                         (
-                            (position.side == PositionSide.Long and high > take_profit) or \
-                            (position.side == PositionSide.Short and low < take_profit)
+                            (position.side == PositionSide.Long and high > position.take_profit) or \
+                            (position.side == PositionSide.Short and low < position.take_profit)
                         )
                     ):
-                        exit_price = position.meta["take_profit"]
+                        exit_price = position.take_profit
                         reason = "止盈"
 
                     # close position

@@ -78,7 +78,8 @@ class Position:
     liquidation_price: Optional[float]
     margin_used: float
 
-    meta: Dict[str, Any] = field(default_factory=dict)
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
 
     def format(self, current_time: pd.Timestamp) -> str:
         parts = [
@@ -90,6 +91,12 @@ class Position:
             f"保证金: {self.margin_used:.2f} USDT",
         ]
 
+        if self.stop_loss is not None:
+            parts.append(f"止损价: {self.stop_loss:.4e}")
+
+        if self.take_profit is not None:
+            parts.append(f"止盈价: {self.take_profit:.4e}")
+
         if self.liquidation_price is not None:
             parts.append(f"强平价: {self.liquidation_price:.4e}")
 
@@ -100,7 +107,7 @@ class Position:
         return " | ".join(parts)
 
     @staticmethod
-    def from_dict(data: Dict[str, Any]) -> Position:
+    def from_dict(data: Dict[str, Any], stop_loss: Optional[float] = None, take_profit: Optional[float] = None) -> Position:
         update_time = data.get("info", {}).get("updateTime", None)
         side_str = str(data["side"]).lower()
         return Position(
@@ -115,6 +122,8 @@ class Position:
             unrealized_pnl_pct=float(data["percentage"]),
             liquidation_price=float(data["liquidationPrice"]) if data["liquidationPrice"] is not None else None,
             margin_used=float(data["initialMargin"]),
+            stop_loss=stop_loss,
+            take_profit=take_profit,
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -276,6 +285,11 @@ class Action:
                 f"止损价: {self.stop_loss:.4e}",
                 f"止盈价: {self.take_profit:.4e}",
             ])
+        elif self.type == ActionType.AdjustOrder:
+            parts.extend([
+                f"止损价: {self.stop_loss:.4e}",
+                f"止盈价: {self.take_profit:.4e}",
+            ])
 
         parts.extend([f"置信度: {self.confidence:d}", f"原因: {self.reasoning:s}"])
 
@@ -287,7 +301,6 @@ class Action:
         if not ("symbol" in data and "action" in data):
             return None
 
-        symbol = format_symbol(str(data["symbol"]))
         if data["action"] == "do_nothing":
             action_type = ActionType.DoNothing
         elif data["action"] == "open_long":
@@ -298,26 +311,35 @@ class Action:
             action_type = ActionType.CloseLong
         elif data["action"] == "close_short":
             action_type = ActionType.CloseShort
+        elif data["action"] == "adjust_order":
+            action_type = ActionType.AdjustOrder
         else:
             return None
 
-        if action_type in [ActionType.DoNothing, ActionType.CloseLong, ActionType.CloseShort]:
-            reasoning = str(data["reasoning"]) if "reasoning" in data else ""
-            return Action(symbol=symbol, type=action_type, reasoning=reasoning)
+        kwargs = {
+            "symbol": format_symbol(str(data["symbol"])),
+            "type": action_type,
+            "confidence": int(data.get("confidence", 0)),
+            "reasoning": str(data.get("reasoning", "")),
+        }
 
-        if not ("leverage" in data and "position_size_usd" in data and "stop_loss" in data and "take_profit" in data and "confidence" in data and "reasoning" in data):
-            return None
+        if action_type in [ActionType.OpenLong, ActionType.OpenShort]:
+            if not ("leverage" in data and "position_size_usd" in data and "stop_loss" in data and "take_profit" in data and "confidence" in data and "reasoning" in data):
+                return None
 
-        return Action(
-            symbol=symbol,
-            type=action_type,
-            leverage=int(data["leverage"]),
-            position_size_usd=float(data["position_size_usd"]),
-            stop_loss=float(data["stop_loss"]),
-            take_profit=float(data["take_profit"]),
-            confidence=int(data["confidence"]),
-            reasoning=str(data["reasoning"]),
-        )
+            kwargs["leverage"] = int(data["leverage"])
+            kwargs["position_size_usd"] = float(data["position_size_usd"])
+            kwargs["stop_loss"] = float(data["stop_loss"])
+            kwargs["take_profit"] = float(data["take_profit"])
+
+        elif action_type == ActionType.AdjustOrder:
+            if not ("stop_loss" in data and "take_profit" in data):
+                return None
+
+            kwargs["stop_loss"] = float(data["stop_loss"])
+            kwargs["take_profit"] = float(data["take_profit"])
+
+        return Action(**kwargs)
 
     def to_dict(self) -> Dict[str, Any]:
         ret = asdict(self)

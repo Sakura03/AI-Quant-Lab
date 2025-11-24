@@ -60,9 +60,6 @@ class ActionFilter(BaseClassWithLogger):
         if action.symbol not in ctx.market_data.keys():
             return f"未知币种: {action.symbol:s}"
 
-        if action.type == ActionType.DoNothing:
-            return ""
-
         if action.type in [ActionType.OpenLong, ActionType.OpenShort]:
             if any(action.symbol == position.symbol for position in ctx.positions):
                 return f"{action.symbol:s}的仓位已存在"
@@ -106,7 +103,7 @@ class ActionFilter(BaseClassWithLogger):
             # if r_ratio < self.r_ratio:
             #     return f"盈亏比过低 (决策: {action.type.name:s}, 当前标记价格: {mark_price:.4e}, 止损价: {action.stop_loss:.4e}, 止盈价: {action.take_profit:.4e}, 潜在亏损: {risk_pct*100:.1f}%, 潜在盈利: {reward_pct*100:.1f}%, 盈亏比: {r_ratio:.2f})"
 
-        if action.type in [ActionType.CloseLong, ActionType.CloseShort]:
+        elif action.type in [ActionType.CloseLong, ActionType.CloseShort]:
             open_position = None
             for position in ctx.positions:
                 if action.symbol == position.symbol:
@@ -121,5 +118,22 @@ class ActionFilter(BaseClassWithLogger):
                 (action.type == ActionType.CloseShort and open_position.side == PositionSide.Long)
             ):
                 return f"决策 ({action.type.name:s}) 与当前{action.symbol:s}持仓冲突 ({open_position.side.name:s})"
+
+        elif action.type == ActionType.AdjustOrder:
+            open_position = None
+            for position in ctx.positions:
+                if action.symbol == position.symbol:
+                    open_position = position
+                    break
+
+            if not open_position:
+                return f"{action.symbol:s}的仓位不存在"
+
+            mark_price = ctx.market_data[action.symbol].mark_price
+            if (
+                (open_position.side == PositionSide.Long and not action.stop_loss < mark_price < action.take_profit) or \
+                (open_position.side == PositionSide.Short and not action.take_profit < mark_price < action.stop_loss)
+            ):
+                return f"止损价或止盈价无效 (持仓方向: {open_position.side.name:s}, 当前标记价格: {mark_price:.4e}, 止损价: {action.stop_loss:.4e}, 止盈价: {action.take_profit:.4e})"
 
         return ""

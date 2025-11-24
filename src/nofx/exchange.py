@@ -8,7 +8,7 @@ import pandas as pd
 from .logger import BaseClassWithLogger
 from .enums import ActionType
 from .structs import Balance, Position, SymbolData, MarketData, Action
-from .utils import retry
+from .utils import retry, format_symbol
 
 
 class Exchange(BaseClassWithLogger):
@@ -48,32 +48,16 @@ class Exchange(BaseClassWithLogger):
         return (min_amount, min_notional)
 
     @retry(max_retries=3, delay=1.0, raise_if_fail=True)
-    def get_balance(self) -> Optional[Balance]:
-        balance = self.exchange.fetch_balance()
-        return Balance.from_dict(balance)
+    def fetch_balance(self, params: Dict[str, Any] = {}) -> Dict[str, Any]:
+        return self.exchange.fetch_balance(params=params)
 
     @retry(max_retries=3, delay=2.0)
-    def get_position(self, symbol: str) -> Optional[Position]:
-        positions = self.exchange.fetch_positions(symbols=[symbol], params={"useV2": True})
+    def fetch_positions(self, symbols: Optional[List[str]] = None, params: Dict[str, Any] = {}) -> List[Dict[str, Any]]:
+        return self.exchange.fetch_positions(symbols=symbols, params=params)
 
-        if len(positions) > 1:
-            self.warning(f"{symbol}有多个持仓, 对冲模式不允许")
-
-        if len(positions) == 0:
-            return None
-
-        position = Position.from_dict(positions[0])
-        return position if position.quantity != 0.0 else None
-
-    @retry(max_retries=3, delay=2.0, output=[])
-    def get_positions(self) -> List[Position]:
-        positions = []
-        for pos in self.exchange.fetch_positions(params={"useV2": True}):
-            position = Position.from_dict(pos)
-            if position.quantity != 0.0:
-                positions.append(position)
-
-        return positions
+    @retry(max_retries=3, delay=2.0)
+    def fetch_open_orders(self, symbol: Optional[str] = None, since: Optional[int] = None, limit: Optional[int] = None, params: Dict[str, Any] = {}) -> List[Dict[str, Any]]:
+        return self.exchange.fetch_open_orders(symbol=symbol, since=since, limit=limit, params=params)
 
     @retry(max_retries=5, delay=5.0, output=[])
     def fetch_ohlcv(self, symbol: str, timeframe: str, since: Optional[int] = None, limit: Optional[int] = None, params: Dict[str, Any] = {}) -> List[Any]:
@@ -142,6 +126,43 @@ class Exchange(BaseClassWithLogger):
         return self.exchange.create_order(symbol, type, side, amount, price, params=params)
 
     """ Core function """
+    def get_balance(self) -> Balance:
+        balance = self.fetch_balance()
+        return Balance.from_dict(balance)
+
+    def get_position(self, symbol: str) -> Optional[Position]:
+        positions = self.fetch_positions(symbols=[symbol], params={"useV2": True})
+
+        if len(positions) > 1:
+            self.warning(f"{symbol}有多个持仓, 对冲模式不允许")
+
+        if len(positions) == 0:
+            return None
+
+        position = Position.from_dict(positions[0])
+        return position if position.quantity != 0.0 else None
+
+    def get_positions(self) -> List[Position]:
+        positions = []
+        for pos in self.fetch_positions(params={"useV2": True}):
+            symbol = format_symbol(str(pos["symbol"]))
+            stop_loss, take_profit = self.get_stop_loss_and_take_profit(symbol)
+            position = Position.from_dict(pos, stop_loss=stop_loss, take_profit=take_profit)
+            if position.quantity != 0.0:
+                positions.append(position)
+
+        return positions
+
+    def get_stop_loss_and_take_profit(self, symbol: str) -> Tuple[Optional[float], Optional[float]]:
+        orders = self.fetch_open_orders(symbol=symbol)
+        stop_loss, take_profit = None, None
+        for order in orders:
+            if order["type"].upper() == "STOP_MARKET":
+                stop_loss = float(order["stopPrice"])
+            elif order["type"].upper() == "TAKE_PROFIT_MARKET":
+                take_profit = float(order["stopPrice"])
+        return stop_loss, take_profit
+
     def fetch_ohlcv_df(self, symbol: str, timeframe: str, limit: int = 200) -> pd.DataFrame:
         ohlcv = self.fetch_ohlcv(symbol=symbol, timeframe=timeframe, limit=limit)
         df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
@@ -294,12 +315,44 @@ class Exchange(BaseClassWithLogger):
         # cancel open orders (stop loss and take profit orders)
         self.cancel_all_orders(action.symbol)
 
+    def adjust_order(self, action: Action):
+        assert action.type == ActionType.AdjustOrder
+
+        # cancel all open orders
+        self.cancel_all_orders(action.symbol)
+
+        # create stop loss order
+        self.create_order(
+            symbol=action.symbol,
+            type="STOP_MARKET",
+            side="sell" if action.stop_loss < action.take_profit else "buy",
+            amount=None,
+            params={
+                "stopPrice": action.stop_loss,
+                "closePosition": True
+            },
+        )
+
+        # create take profit order
+        self.create_order(
+            symbol=action.symbol,
+            type="TAKE_PROFIT_MARKET",
+            side="sell" if action.stop_loss < action.take_profit else "buy",
+            params={
+                "stopPrice": action.take_profit,
+                "closePosition": True
+            },
+        )
+
     def execute_action(self, action: Action):
         if action.type in [ActionType.OpenLong, ActionType.OpenShort]:
             self.open_position(action)
 
         elif action.type in [ActionType.CloseLong, ActionType.CloseShort]:
             self.close_position(action)
+
+        elif action.type == ActionType.AdjustOrder:
+            self.adjust_order(action)
 
     def execute_actions(self, actions: List[Action]):
         for action in actions:
