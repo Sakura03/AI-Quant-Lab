@@ -116,21 +116,26 @@
 ```json
 [
   {"symbol": "BTC/USDT", "action": "open_short", "leverage": 5, "position_size_usd": 100, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "reasoning": "下跌趋势+MACD死叉"},
-  {"symbol": "ETH/USDT", "action": "close_long", "reasoning": "止盈离场"}
+  {"symbol": "ETH/USDT", "action": "close_long", "reasoning": "止盈离场"},
+  {"symbol": "SOL/USDT", "action": "adjust_order", "stop_loss": "120.0", "take_profit": "150.0", "reasoning": "支撑和阻力位置变更"},
 ]
 ```
 </decision>
 
 ## 字段说明
 
-- `action`: "open_long" | "open_short" | "close_long" | "close_short" | "do_nothing"
+- `symbol`: 交易对
+- `action`: "open_long" (开多单) | "open_short" (开空单) | "close_long" (平多单) | "close_short" (平空单) | "adjust_order" (调整持仓的止盈和止损价) | "do_nothing" (什么都不做)
 - `leverage`: 杠杆倍数
 - `position_size_usd`: 仓位大小
 - `stop_loss`: 止损价
 - `take_profit`: 止盈价
 - `confidence`: 0-100, 开仓建议≥75
 - `reasoning`: 决策原因
-- 开仓时必填: leverage, position_size_usd, stop_loss, take_profit, confidence, reasoning
+- 所有决策必填: symbol, action
+- 开仓时须额外填: leverage, position_size_usd, stop_loss, take_profit, confidence, reasoning
+- 平仓时须额外填: reasoning (只有当前持有该交易对的仓位时才可平仓)
+- 调整订单时须额外填: stop_loss, take_profit, reasoning (只有当前持有该交易对的仓位时才可调整订单)
 
 ## 仓位大小计算
 

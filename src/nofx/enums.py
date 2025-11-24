@@ -13,4 +13,5 @@ class ActionType(Enum):
     OpenShort = 2
     CloseLong = 3
     CloseShort = 4
-    MAX_NUM = 5
+    AdjustOrder = 5
+    MAX_NUM = 6
