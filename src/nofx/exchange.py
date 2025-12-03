@@ -37,7 +37,7 @@ class Exchange(BaseClassWithLogger):
     def load_markets(self):
         self.exchange.load_markets()
 
-    @retry(max_retries=3, delay=1.0, output=(0.001, 10.0))
+    @retry(max_retries=5, delay=1.0, output=(0.001, 10.0))
     def fetch_order_restricts(self, symbol: str) -> Tuple[float, float]:
         """
             获取订单的最小交易数量 (以币为单位) 和最小名义价值
@@ -47,15 +47,15 @@ class Exchange(BaseClassWithLogger):
         min_notional = market["limits"]["cost"]["min"]
         return (min_amount, min_notional)
 
-    @retry(max_retries=3, delay=1.0, raise_if_fail=True)
+    @retry(max_retries=5, delay=1.0, raise_if_fail=True)
     def fetch_balance(self, params: Dict[str, Any] = {}) -> Dict[str, Any]:
         return self.exchange.fetch_balance(params=params)
 
-    @retry(max_retries=3, delay=2.0)
+    @retry(max_retries=5, delay=2.0, output=[])
     def fetch_positions(self, symbols: Optional[List[str]] = None, params: Dict[str, Any] = {}) -> List[Dict[str, Any]]:
         return self.exchange.fetch_positions(symbols=symbols, params=params)
 
-    @retry(max_retries=3, delay=2.0)
+    @retry(max_retries=5, delay=2.0, output=[])
     def fetch_open_orders(self, symbol: Optional[str] = None, since: Optional[int] = None, limit: Optional[int] = None, params: Dict[str, Any] = {}) -> List[Dict[str, Any]]:
         return self.exchange.fetch_open_orders(symbol=symbol, since=since, limit=limit, params=params)
 
@@ -67,29 +67,29 @@ class Exchange(BaseClassWithLogger):
     def fetch_funding_rate_history(self, symbol: str, since: Optional[int] = None, limit: Optional[int] = None, params: Dict[str, Any] = {}) -> List[Any]:
         return self.exchange.fetch_funding_rate_history(symbol, since=since, limit=limit, params=params)
 
-    @retry(max_retries=3, delay=1.0, raise_if_fail=True)
+    @retry(max_retries=5, delay=1.0, raise_if_fail=True)
     def fetch_mark_price(self, symbol: str) -> Optional[float]:
         return self.exchange.fetch_mark_price(symbol)["markPrice"]
 
-    @retry(max_retries=3, delay=1.0)
+    @retry(max_retries=5, delay=1.0)
     def fetch_open_interest(self, symbol: str) -> Optional[float]:
         return self.exchange.fetch_open_interest(symbol)["openInterestAmount"]
 
-    @retry(max_retries=3, delay=1.0)
+    @retry(max_retries=5, delay=1.0)
     def fetch_funding_rate(self, symbol: str) -> Optional[float]:
         return self.exchange.fetch_funding_rate(symbol)["fundingRate"]
 
-    @retry(max_retries=3, delay=1.0, output=[])
+    @retry(max_retries=5, delay=1.0, output=[])
     def cancel_all_orders(self, symbol: str) -> List[Any]:
         return self.exchange.cancel_all_orders(symbol)
 
-    @retry(max_retries=3, delay=1.0)
+    @retry(max_retries=5, delay=1.0)
     def set_one_way_mode(self, symbol: str):
         position_mode = self.exchange.fetch_position_mode(symbol)
         if position_mode["hedged"]:
             self.exchange.set_position_mode(hedged=False, symbol=symbol)
 
-    @retry(max_retries=3, delay=1.0, output={})
+    @retry(max_retries=5, delay=1.0, output={})
     def set_leverage(self, leverage: int, symbol: Optional[str] = None) -> Dict[str, Any]:
         return self.exchange.set_leverage(leverage=leverage, symbol=symbol)
 

@@ -109,7 +109,7 @@ class AutoTrader(BaseClassWithLogger):
             try:
                 self.run_cycle()
             except Exception as e:
-                self.warning(f"❌ run_cycle 异常: {e}")
+                self.exception(f"❌ run_cycle 异常: {e}")
                 time.sleep(5)  # 短暂冷却防止异常死循环
 
     """ Backtester """
@@ -136,7 +136,7 @@ class AutoTrader(BaseClassWithLogger):
             try:
                 self.run_cycle()
             except Exception as e:
-                self.warning(f"❌ run_cycle 异常: {e}")
+                self.exception(f"❌ run_cycle 异常: {e}")
 
         self.backtest_manager.finish()
         self.backtest_manager.analyze()

@@ -171,6 +171,11 @@ class BacktestManger(BaseClassWithLogger):
         self.balance.total_unrealized_profit -= position.unrealized_pnl
         self.balance.available_balance += position.margin_used + position.unrealized_pnl
 
+    def adjust_order(self, index: int, action: Action):
+        position = self.open_positions[index]
+        position.stop_loss = action.stop_loss
+        position.take_profit = action.take_profit
+
     def update_position(self, index: int, current_price: float):
         if not 0 <= index < len(self.open_positions):
             self.warning(f"索引{index:d}超出边界, 当前持仓数: {len(self.open_positions):d}")
@@ -213,6 +218,16 @@ class BacktestManger(BaseClassWithLogger):
 
             # make sure no multiple positions
             assert self.get_position_index(action.symbol) is None
+
+        elif action.type == ActionType.AdjustOrder:
+            # fetch current position
+            index = self.get_position_index(action.symbol)
+            if index is None:
+                self.warning(f"调整订单失败: {action.symbol}的仓位不存在")
+                return
+
+            # adjust order
+            self.adjust_order(index, action)
 
     def execute_actions(self, actions: List[Action], current_time: pd.Timestamp):
         for action in actions:

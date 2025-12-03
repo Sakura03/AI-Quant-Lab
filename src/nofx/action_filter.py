@@ -9,11 +9,12 @@ from .structs import Action, Context
 
 class ActionFilter(BaseClassWithLogger):
     priority_map = {
-        ActionType.CloseLong: 0,
-        ActionType.CloseShort: 0,
-        ActionType.OpenLong: 1,
-        ActionType.OpenShort: 1,
-        ActionType.DoNothing: 2,
+        ActionType.AdjustOrder: 0,
+        ActionType.CloseLong: 1,
+        ActionType.CloseShort: 1,
+        ActionType.OpenLong: 2,
+        ActionType.OpenShort: 2,
+        ActionType.DoNothing: 3,
     }
 
     def __init__(self, r_ratio: float, altcoin_leverage: int, BTC_ETH_leverage: int, max_positions: int, restricts: Dict[str, Tuple[float, float]], logger: Optional[logging.Logger] = None, **kwargs):
