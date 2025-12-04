@@ -10,17 +10,30 @@ exchange:
   sandbox: false
   enable_rate_limit: true
 
+# =========================
+# 提示词 / 策略参数
+# =========================
 prompt:
-  template: "default"
-  r_ratio: 3.0
+  # 这里填你刚才那份“夏普优先 + 盈亏比 + 风控”的系统提示词模板名
+  # 一般是某个模板文件名 / key，按项目 README 来
+  template: "pre-1"
+  # 最小盈亏比，仅在提示词中强调，不做硬过滤
+  # 和提示词里“盈亏比 >= 2:1”保持一致
+  r_ratio: 2.0
+  # 最大同时持仓数 对应提示词里“同时持仓不超过 3 个”
   max_positions: 3
+  # 杠杆上限（代码一般会把这当作上限，LLM 自己再在提示词里收敛）
+  # 山寨币最大杠杆
   altcoin_leverage: 3
+  # BTC / ETH 最大杠杆
   BTC_ETH_leverage: 5
-  history_span: 30
+  # 每个时间周期给 LLM 的历史数据长度（单位：K线根数）
+  # 4h 周期下，60 根 ≈ 10 天历史，足够看趋势又不至于 token 爆炸
+  history_span: 60
 
 llm:
   model: "deepseek-chat"
-  api_key: "llm_api_key"
+  api_key: "sk-385c78af05ec4e45a20aee7f2752b3ac"
   temperature: 1.0
 
 backtest:
@@ -29,88 +42,165 @@ backtest:
   initial_balance: 10000.0
   data_folder: "data"
 
+# =========================
+# 交易执行配置
+# =========================
 trader:
-  mode: "live"  # choices: ["backtest", "live"]
+  mode: "backtest"  # choices: ["backtest", "live"]
+  # LLM 决策的主时间周期
   timeframe: "4h"
   save_folder: "results/default"
   # symbols: ["BTC/USDT", "ETH/USDT"]
+   # 交易对列表——目前先用这 4 个，数量适中、相关性合理
   symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "SUI/USDT"]
   # symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "DOGE/USDT", "ADA/USDT", "AAVE/USDT", "SUI/USDT", "1000PEPE/USDT"]
 
+# =========================
+# 技术指标配置
+# =========================
 indicators:
+# -------- 15m：作为短周期结构参考，保留全套指标 --------
   "15m":
-  - name: "EMA"
-    params:
-      timeperiod: 7
-    display_name: "EMA7"
+    - name: "EMA"
+      params:
+        timeperiod: 7
+      display_name: "EMA7"
 
-  - name: "EMA"
-    params:
-      timeperiod: 20
-    display_name: "EMA20"
+    - name: "EMA"
+      params:
+        timeperiod: 20
+      display_name: "EMA20"
 
-  - name: "EMA"
-    params:
-      timeperiod: 50
-    display_name: "EMA50"
+    - name: "EMA"
+      params:
+        timeperiod: 50
+      display_name: "EMA50"
 
-  - name: "BBANDS"
-    params:
-      timeperiod: 20
-      nbdevup: 2
-      nbdevdn: 2
-    display_name:
-    - "BBANDS_UPPER"
-    - "BBANDS_MID"
-    - "BBANDS_LOWER"
+    - name: "BBANDS"
+      params:
+        timeperiod: 20
+        nbdevup: 2
+        nbdevdn: 2
+      display_name:
+        - "BBANDS_UPPER"
+        - "BBANDS_MID"
+        - "BBANDS_LOWER"
 
-  - name: "MACD"
-    params:
-      fastperiod: 12
-      slowperiod: 26
-      signalperiod: 9
-    display_name:
-    - "DIF"
-    - "DEA"
-    - "MACDHIST"
+    - name: "MACD"
+      params:
+        fastperiod: 12
+        slowperiod: 26
+        signalperiod: 9
+      display_name:
+        - "DIF"
+        - "DEA"
+        - "MACDHIST"
 
-  - name: "RSI"
-    params:
-      timeperiod: 7
-    display_name: "RSI7"
+    - name: "RSI"
+      params:
+        timeperiod: 7
+      display_name: "RSI7"
 
-  - name: "RSI"
-    params:
-      timeperiod: 14
-    display_name: "RSI14"
+    - name: "RSI"
+      params:
+        timeperiod: 14
+      display_name: "RSI14"
 
-  - name: "ATR"
-    params:
-      timeperiod: 14
-    display_name: "ATR14"
+    - name: "ATR"
+      params:
+        timeperiod: 14
+      display_name: "ATR14"
 
-  - name: "KDJ"
-    params:
-      fastk_period: 14
-      slowk_period: 3
-      slowd_period: 3
-    display_name:
-    - "K"
-    - "D"
-    - "J"
+    - name: "KDJ"
+      params:
+        fastk_period: 14
+        slowk_period: 3
+        slowd_period: 3
+      display_name:
+        - "K"
+        - "D"
+        - "J"
 
-  # - name: "ichimoku"
-  #   params:
-  #     conversion_line_period: 9
-  #     base_line_period: 26
-  #     lagging_span: 52
-  #     displacement: 26
-  #   display_name:
-  #   - "TenkanSen"
-  #   - "KijunSen"
-  #   - "SenkouSpanA"
-  #   - "SenkouSpanB"
+  # -------- 4h：主决策周期，去掉 KDJ，信号更干净 --------
+  "4h":
+    - name: "EMA"
+      params:
+        timeperiod: 7
+      display_name: "EMA7"
 
-  "4h": "15m"  # use the same indicators as 15m
+    - name: "EMA"
+      params:
+        timeperiod: 20
+      display_name: "EMA20"
 
-  "1d": "15m"
+    - name: "EMA"
+      params:
+        timeperiod: 50
+      display_name: "EMA50"
+
+    - name: "BBANDS"
+      params:
+        timeperiod: 20
+        nbdevup: 2
+        nbdevdn: 2
+      display_name:
+        - "BBANDS_UPPER"
+        - "BBANDS_MID"
+        - "BBANDS_LOWER"
+
+    - name: "MACD"
+      params:
+        fastperiod: 12
+        slowperiod: 26
+        signalperiod: 9
+      display_name:
+        - "DIF"
+        - "DEA"
+        - "MACDHIST"
+
+    - name: "RSI"
+      params:
+        timeperiod: 14
+      display_name: "RSI14"
+
+    - name: "ATR"
+      params:
+        timeperiod: 14
+      display_name: "ATR14"
+
+  # -------- 1d：大级别趋势，进一步简化 --------
+  "1d":
+    - name: "EMA"
+      params:
+        timeperiod: 20
+      display_name: "EMA20"
+
+    - name: "EMA"
+      params:
+        timeperiod: 50
+      display_name: "EMA50"
+
+    - name: "BBANDS"
+      params:
+        timeperiod: 20
+        nbdevup: 2
+        nbdevdn: 2
+      display_name:
+        - "BBANDS_UPPER"
+        - "BBANDS_MID"
+        - "BBANDS_LOWER"
+
+    - name: "MACD"
+      params:
+        fastperiod: 12
+        slowperiod: 26
+        signalperiod: 9
+      display_name:
+        - "DIF"
+        - "DEA"
+        - "MACDHIST"
+
+    - name: "RSI"
+      params:
+        timeperiod: 14
+      display_name: "RSI14"
