@@ -1,3 +1,5 @@
+import argparse
+
 from nofx.utils import visualize_snapshots
 
 

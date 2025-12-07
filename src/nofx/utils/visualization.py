@@ -41,6 +41,9 @@ def visualize_snapshots(folder: str, symbols: List[str], save_path: str):
 
 
 def visualize_funding_curve(df: pd.DataFrame, save_path: str, funding_col: str, extra_cols: List[str] = []):
+    if len(df) == 0:
+        return
+
     df = df.sort_index(ascending=True)
     df["drawdown"] = df[funding_col] / df[funding_col].cummax() - 1.0
 

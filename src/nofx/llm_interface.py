@@ -34,6 +34,7 @@ class LLMInterface(BaseClassWithLogger):
             temperature=self.temperature,
             stream=False,
         )
+        self.info(f"调用{self.model:s}模型完毕, 使用token数: {response.usage.total_tokens:d} (提示词: {response.usage.prompt_tokens:d}, 回答: {response.usage.completion_tokens:d})")
         return response.choices[0].message.content
 
     def parse_ai_response(self, text: str) -> Tuple[str, List[Action]]:
