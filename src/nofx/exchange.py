@@ -80,8 +80,8 @@ class Exchange(BaseClassWithLogger):
         return self.exchange.fetch_funding_rate(symbol)["fundingRate"]
 
     @retry(max_retries=5, delay=1.0, output=[])
-    def cancel_all_orders(self, symbol: str) -> List[Any]:
-        return self.exchange.cancel_all_orders(symbol)
+    def cancel_all_orders(self, symbol: str, params: Dict[str, Any] = {}) -> List[Any]:
+        return self.exchange.cancel_all_orders(symbol, params=params)
 
     @retry(max_retries=5, delay=1.0)
     def set_one_way_mode(self, symbol: str):
@@ -115,13 +115,17 @@ class Exchange(BaseClassWithLogger):
                     self.warning(f"开仓失败: {symbol:s}的仓位已存在")
                     return {}
 
-        orders = self.exchange.fetch_open_orders(symbol)
-        if (
-            type in ["limit", "STOP_MARKET", "TAKE_PROFIT_MARKET"] and \
-            any(order["type"].lower() == type.lower() and order["side"].lower() == side.lower() for order in orders)
-        ):
-            self.warning(f"{symbol:s}的{side:s}方向{type:s}单已存在")
-            return {}
+        if type == "limit":
+            orders = self.exchange.fetch_open_orders(symbol)
+            if any(order["type"].lower() == "limit" and order["side"].lower() == side.lower() for order in orders):
+                self.warning(f"{symbol:s}的{side:s}方向{type:s}单已存在")
+                return {}
+
+        if type in ["STOP_MARKET", "TAKE_PROFIT_MARKET"]:
+            orders = self.exchange.fetch_open_orders(symbol, params={"conditional": True})
+            if any(order["info"]["orderType"].lower() == type.lower() and order["side"].lower() == side.lower() for order in orders):
+                self.warning(f"{symbol:s}的{side:s}方向{type:s}单已存在")
+                return {}
 
         return self.exchange.create_order(symbol, type, side, amount, price, params=params)
 
@@ -154,7 +158,7 @@ class Exchange(BaseClassWithLogger):
         return positions
 
     def get_stop_loss_and_take_profit(self, symbol: str) -> Tuple[Optional[float], Optional[float]]:
-        orders = self.fetch_open_orders(symbol=symbol)
+        orders = self.fetch_open_orders(symbol=symbol, params={"conditional": True})
         stop_loss, take_profit = None, None
         for order in orders:
             if order["type"].upper() == "STOP_MARKET":
@@ -257,7 +261,7 @@ class Exchange(BaseClassWithLogger):
         assert action.type in [ActionType.OpenLong, ActionType.OpenShort]
 
         # cancel all open orders
-        self.cancel_all_orders(action.symbol)
+        self.cancel_all_orders(action.symbol, params={"conditional": True})
 
         # set one-way mode
         self.set_one_way_mode(action.symbol)
@@ -281,7 +285,6 @@ class Exchange(BaseClassWithLogger):
             symbol=action.symbol,
             type="STOP_MARKET",
             side="sell" if action.type == ActionType.OpenLong else "buy",
-            amount=None,
             params={
                 "stopPrice": action.stop_loss,
                 "closePosition": True
@@ -313,20 +316,19 @@ class Exchange(BaseClassWithLogger):
         )
 
         # cancel open orders (stop loss and take profit orders)
-        self.cancel_all_orders(action.symbol)
+        self.cancel_all_orders(action.symbol, params={"conditional": True})
 
     def adjust_order(self, action: Action):
         assert action.type == ActionType.AdjustOrder
 
         # cancel all open orders
-        self.cancel_all_orders(action.symbol)
+        self.cancel_all_orders(action.symbol, params={"conditional": True})
 
         # create stop loss order
         self.create_order(
             symbol=action.symbol,
             type="STOP_MARKET",
             side="sell" if action.stop_loss < action.take_profit else "buy",
-            amount=None,
             params={
                 "stopPrice": action.stop_loss,
                 "closePosition": True
