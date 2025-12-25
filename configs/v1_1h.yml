@@ -1,0 +1,127 @@
+logger:
+  name: "default"
+  log_file: "logs/default.txt"
+  level_name: "INFO"
+
+exchange:
+  name: "binance"
+  api_key: "your_api_key"
+  secret: "your_secret"
+  sandbox: false
+  enable_rate_limit: true
+
+prompt:
+  template: "default"
+  r_ratio: 3.0
+  max_positions: 3
+  altcoin_leverage: 3
+  BTC_ETH_leverage: 5
+  history_span: 30
+
+llm:
+  model: "deepseek-chat"
+  api_key: "llm_api_key"
+  temperature: 1.0
+
+backtest:
+  start_time: "20250101-000000"
+  end_time: "20250701-000000"
+  initial_balance: 10000.0
+  data_folder: "data"
+
+trader:
+  mode: "live"  # choices: ["backtest", "live"]
+  timeframe: "4h"
+  save_folder: "results/default"
+  # symbols: ["BTC/USDT", "ETH/USDT"]
+  symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "SUI/USDT"]
+  # symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "DOGE/USDT", "ADA/USDT", "AAVE/USDT", "SUI/USDT", "1000PEPE/USDT"]
+
+# =========================
+# 技术指标配置（短线 + 宽止损版）
+# =========================
+indicators:
+  # ---------------------------------------------
+  # 1h：中短周期衔接（辅助 4h & 15m）
+  # 用于识别 4h 趋势中的短期加速 / 衰竭
+  # ---------------------------------------------
+  "1h":
+    - name: "EMA"
+      params:
+        timeperiod: 20
+      display_name: "EMA20"
+
+    - name: "RSI"
+      params:
+        timeperiod: 14
+      display_name: "RSI14"
+
+    - name: "ATR"
+      params:
+        timeperiod: 14
+      display_name: "ATR14"
+
+  # ---------------------------------------------
+  # 4h：主趋势周期（决策核心）
+  # 中速趋势、波段方向、止损尺度，服务于 TrendScore
+  # ---------------------------------------------
+  "4h":
+    - name: "EMA"
+      params:
+        timeperiod: 20
+      display_name: "EMA20"
+
+    - name: "EMA"
+      params:
+        timeperiod: 50
+      display_name: "EMA50"
+
+    - name: "BBANDS"
+      params:
+        timeperiod: 20
+        nbdevup: 2
+        nbdevdn: 2
+      display_name:
+        - "BBANDS_UPPER"
+        - "BBANDS_MID"
+        - "BBANDS_LOWER"
+
+    - name: "MACD"
+      params:
+        fastperiod: 12
+        slowperiod: 26
+        signalperiod: 9
+      display_name:
+        - "DIF"
+        - "DEA"
+        - "MACDHIST"
+
+    - name: "RSI"
+      params:
+        timeperiod: 14
+      display_name: "RSI14"
+
+    - name: "ATR"
+      params:
+        timeperiod: 14
+      display_name: "ATR14"
+
+  # ---------------------------------------------
+  # 1d：大周期过滤 & 宏观情绪
+  # 慢速长均线，判断是否值得参与
+  # ---------------------------------------------
+  "1d":
+    - name: "EMA"
+      params:
+        timeperiod: 20
+      display_name: "EMA20"
+
+    - name: "EMA"
+      params:
+        timeperiod: 50
+      display_name: "EMA50"
+
+    - name: "ATR"
+      params:
+        timeperiod: 14
+      display_name: "ATR14"
