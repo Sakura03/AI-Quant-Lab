@@ -11,12 +11,12 @@ exchange:
   enable_rate_limit: true
 
 prompt:
-  template: "default"
-  r_ratio: 3.0
+  template: "v1_1h"
+  r_ratio: 2.0
   max_positions: 3
   altcoin_leverage: 3
   BTC_ETH_leverage: 5
-  history_span: 30
+  history_span: 100
 
 llm:
   model: "deepseek-chat"
@@ -24,17 +24,17 @@ llm:
   temperature: 1.0
 
 backtest:
-  start_time: "20250101-000000"
-  end_time: "20250701-000000"
-  initial_balance: 10000.0
+  start_time: "20251211-000000"
+  end_time: "20251212-000000"
+  initial_balance: 1000.0
   data_folder: "data"
 
 trader:
-  mode: "live"  # choices: ["backtest", "live"]
-  timeframe: "4h"
+  mode: "backtest"  # choices: ["backtest", "live"]
+  timeframe: "1h"
   save_folder: "results/default"
   # symbols: ["BTC/USDT", "ETH/USDT"]
-  symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "SUI/USDT"]
+  symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
   # symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "DOGE/USDT", "ADA/USDT", "AAVE/USDT", "SUI/USDT", "1000PEPE/USDT"]
 
 # =========================
