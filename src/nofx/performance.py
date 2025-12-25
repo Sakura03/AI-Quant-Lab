@@ -28,6 +28,7 @@ class PerformanceAnalyzer:
         nan_to_zero = lambda x: float(0.0 if np.isnan(x) or np.isinf(x) else x)
         return Metrics(
             annual_return=nan_to_zero(emp.annual_return(returns, annualization=self.annualization)),
+            return_std=nan_to_zero(np.std(returns, ddof=1)),
             sharpe_ratio=nan_to_zero(emp.sharpe_ratio(returns, annualization=self.annualization)),
             sortino_ratio=nan_to_zero(emp.sortino_ratio(returns, annualization=self.annualization)),
             calmar_ratio=nan_to_zero(emp.calmar_ratio(returns, annualization=self.annualization)),

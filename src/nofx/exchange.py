@@ -8,7 +8,7 @@ import pandas as pd
 from .logger import BaseClassWithLogger
 from .enums import ActionType
 from .structs import Balance, Position, SymbolData, MarketData, Action
-from .utils import retry, format_symbol
+from .utils import retry, format_symbol, timeframe_to_seconds
 
 
 class Exchange(BaseClassWithLogger):
@@ -167,10 +167,12 @@ class Exchange(BaseClassWithLogger):
                 take_profit = float(order["stopPrice"])
         return stop_loss, take_profit
 
-    def fetch_ohlcv_df(self, symbol: str, timeframe: str, limit: int = 200) -> pd.DataFrame:
+    def fetch_ohlcv_df(self, symbol: str, timeframe: str, current_time: pd.Timestamp, limit: int = 200) -> pd.DataFrame:
         ohlcv = self.fetch_ohlcv(symbol=symbol, timeframe=timeframe, limit=limit)
         df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+        seconds = timeframe_to_seconds(timeframe)
+        df = df.loc[df["timestamp"] < current_time.floor(f"{seconds}s")]
         return df
 
     def fetch_history_ohlcv_df(self, symbol: str, timeframe: str, start_time: pd.Timestamp, end_time: pd.Timestamp) -> pd.DataFrame:
@@ -238,7 +240,7 @@ class Exchange(BaseClassWithLogger):
         df["timestamp"] = df["timestamp"].dt.floor("s")
         return df
 
-    def get_market_data(self, symbols: List[str], timeframes: List[str]) -> MarketData:
+    def get_market_data(self, symbols: List[str], timeframes: List[str], current_time: pd.Timestamp) -> MarketData:
         market_data = dict()
         for symbol in symbols:
             mark_price = self.fetch_mark_price(symbol)
@@ -251,7 +253,7 @@ class Exchange(BaseClassWithLogger):
                 open_interest=self.fetch_open_interest(symbol),
                 funding_rate=self.fetch_funding_rate(symbol),
                 data={
-                    timeframe: self.fetch_ohlcv_df(symbol, timeframe=timeframe)
+                    timeframe: self.fetch_ohlcv_df(symbol, timeframe=timeframe, current_time=current_time)
                     for timeframe in timeframes
                 }
             )

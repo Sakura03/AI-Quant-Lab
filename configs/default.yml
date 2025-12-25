@@ -38,12 +38,23 @@ trader:
   # symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "DOGE/USDT", "ADA/USDT", "AAVE/USDT", "SUI/USDT", "1000PEPE/USDT"]
 
 indicators:
-  "15m":
+  "1h":
   - name: "EMA"
     params:
-      timeperiod: 7
-    display_name: "EMA7"
+      timeperiod: 20
+    display_name: "EMA20"
 
+  - name: "RSI"
+    params:
+      timeperiod: 14
+    display_name: "RSI14"
+
+  - name: "ATR"
+    params:
+      timeperiod: 14
+    display_name: "ATR14"
+
+  "4h":
   - name: "EMA"
     params:
       timeperiod: 20
@@ -76,11 +87,6 @@ indicators:
 
   - name: "RSI"
     params:
-      timeperiod: 7
-    display_name: "RSI7"
-
-  - name: "RSI"
-    params:
       timeperiod: 14
     display_name: "RSI14"
 
@@ -89,28 +95,28 @@ indicators:
       timeperiod: 14
     display_name: "ATR14"
 
-  - name: "KDJ"
+  "1d":
+  - name: "EMA"
     params:
-      fastk_period: 14
-      slowk_period: 3
-      slowd_period: 3
+      timeperiod: 20
+    display_name: "EMA20"
+
+  - name: "EMA"
+    params:
+      timeperiod: 50
+    display_name: "EMA50"
+
+  - name: "MACD"
+    params:
+      fastperiod: 12
+      slowperiod: 26
+      signalperiod: 9
     display_name:
-    - "K"
-    - "D"
-    - "J"
+    - "DIF"
+    - "DEA"
+    - "MACDHIST"
 
-  # - name: "ichimoku"
-  #   params:
-  #     conversion_line_period: 9
-  #     base_line_period: 26
-  #     lagging_span: 52
-  #     displacement: 26
-  #   display_name:
-  #   - "TenkanSen"
-  #   - "KijunSen"
-  #   - "SenkouSpanA"
-  #   - "SenkouSpanB"
-
-  "4h": "15m"  # use the same indicators as 15m
-
-  "1d": "15m"
+  - name: "RSI"
+    params:
+      timeperiod: 14
+    display_name: "RSI14"

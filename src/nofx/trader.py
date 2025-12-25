@@ -174,13 +174,13 @@ class AutoTrader(BaseClassWithLogger):
             raise ValueError(f"不支持的模式: '{self.mode:s}'")
 
     def get_market_data(self) -> MarketData:
+        current_time = self.get_current_time()
         if self.mode == "live":
-            market_data = self.exchange.get_market_data(self.symbols, self.timeframes)
+            market_data = self.exchange.get_market_data(self.symbols, self.timeframes, current_time)
             add_indicators(market_data, self.indicators)
             return market_data
 
         elif self.mode == "backtest":
-            current_time = self.get_current_time()
             return self.backtest_manager.get_market_data(current_time)
 
         else:

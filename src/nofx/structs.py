@@ -353,6 +353,7 @@ class Action:
 @dataclass
 class Metrics:
     annual_return: float = 0.0
+    return_std: float = 0.0
     sharpe_ratio: float = 0.0
     sortino_ratio: float = 0.0
     calmar_ratio: float = 0.0
@@ -361,6 +362,7 @@ class Metrics:
     def format(self) -> str:
         parts = [
             f"年化收益率: {self.annual_return*100:.2f}%",
+            f"收益率标准差: {self.return_std:.4f}",
             f"夏普比率: {self.sharpe_ratio:.2f}",
             f"索提诺比率: {self.sortino_ratio:.2f}",
             f"卡玛比率: {self.calmar_ratio:.2f}",
