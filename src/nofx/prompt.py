@@ -13,15 +13,12 @@ from .utils import format_timeframe
 class PromptManager(BaseClassWithLogger):
     template_folder = "prompt_template"
 
-    def __init__(self, template: str, r_ratio: float, max_positions: int, altcoin_leverage: int, BTC_ETH_leverage: int, history_span: int, run_timeframe: str, logger: Optional[logging.Logger] = None):
+    def __init__(self, template: str, max_positions: int, max_leverage: int, run_timeframe: str, logger: Optional[logging.Logger] = None):
         super().__init__(logger=logger)
 
         self.template = template
-        self.r_ratio = r_ratio
         self.max_positions = max_positions
-        self.altcoin_leverage = altcoin_leverage
-        self.BTC_ETH_leverage = BTC_ETH_leverage
-        self.history_span = history_span
+        self.max_leverage = max_leverage
         self.run_timeframe = run_timeframe
 
         system_prompt_file = osp.join(self.template_folder, self.template + ".txt")
@@ -35,26 +32,22 @@ class PromptManager(BaseClassWithLogger):
             self.system_prompt = f.read()
 
     def generate_system_prompt(self, balance: Balance) -> str:
-        text = format_timeframe(self.run_timeframe)
-        system_prompt = self.system_prompt.replace(r"{时间周期}", text)
-
-        BTC_ETH_position_size = balance.total_wallet_balance * self.BTC_ETH_leverage / self.max_positions
-        altcoin_position_size = balance.total_wallet_balance * self.altcoin_leverage / self.max_positions
-        items = [
-            f"1. 盈亏比: 必须 ≥ {self.r_ratio:.2f} (冒1%风险，赚{self.r_ratio:.2f}%+收益)",
-            f"2. 最多持仓: {self.max_positions:d}个币种 (质量>数量)",
-            f"3. 单币仓位: BTC/ETH {BTC_ETH_position_size*0.8:.2f}-{BTC_ETH_position_size:.2f} USDT | 山寨币{altcoin_position_size*0.8:.2f}-{altcoin_position_size:.2f} USDT",
-            f"4. 杠杆限制: **山寨币最大{self.altcoin_leverage:d}x杠杆** | **BTC/ETH最大{self.BTC_ETH_leverage:d}x杠杆** (⚠️ 严格执行，不可超过)",
-            "5. 保证金: 总使用率 ≤ 95%",
-            "6. 开仓金额: **≥10 USDT**",
-        ]
-        text = "\n".join(items)
-        return system_prompt.replace(r"{添加硬约束}", text)
+        return self.system_prompt
 
     def generate_user_prompt(self, ctx: Context) -> str:
         balance = ctx.balance
         positions = ctx.positions
         market_data = ctx.market_data
+        performance = ctx.performance
+
+        if ctx.num_cycle < 30 or performance.return_std == 0.0 or performance.sharpe_ratio == 0.0:
+            stage = "COLD_START"
+        elif performance.sharpe_ratio < 0.0:
+            stage = "DEFENSIVE"
+        elif performance.sharpe_ratio < 0.7:
+            stage = "NORMAL"
+        else:
+            stage = "AGGRESSIVE"
 
         json_dict = {
             "meta": {
@@ -67,14 +60,13 @@ class PromptManager(BaseClassWithLogger):
                 "open_positions_count": len(positions),
             },
             "strategy_state": {
-                "stage": "NORMAL",
+                "stage": stage,
                 "sample_count": ctx.num_cycle,
-                "sharpe": ctx.performance.sharpe_ratio,
-                "return_std": ctx.performance.return_std,
+                "sharpe": performance.sharpe_ratio,
+                "return_std": performance.return_std,
             },
             "constraints": {
-                "max_BTC_ETH_leverage": self.BTC_ETH_leverage,
-                "max_altcoin_leverage": self.altcoin_leverage,
+                "max_leverage": self.max_leverage,
                 "max_open_positions": self.max_positions,
             },
             "symbols": [],
@@ -356,6 +348,7 @@ class PromptManager(BaseClassWithLogger):
                     "h4_structure": h4_structure,
                     "multi_tf": multi_tf,
                     "daily_bias": daily_bias,
+                    "atr_1h": atr14_1h,
                 },
             }
 

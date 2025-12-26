@@ -20,11 +20,8 @@ pip install .
 - `llm:api_key`: LLM的密钥 ([Deepseek 官网](https://platform.deepseek.com/)).
 - `logger:level_name`: 默认 `"INFO"`, 如果希望打印提示词, 设置为 `"DEBUG"`.
 - `prompt:template`: 使用的系统提示词模板.
-- `prompt:r_ratio`: 每个决策的最小盈亏比 (仅在提示词中提及该最小盈亏比, 在决策筛选中并未按照盈亏比筛选, 也就是说 LLM 可能给出盈亏比低于该值的决策).
 - `prompt:max_positions`: 最大持仓数.
-- `prompt:altcoin_leverage`: 山寨币的最大杠杆.
-- `prompt:BTC_ETH_leverage`: BTC 和 ETH 的最大杠杆.
-- `prompt:history_span`: 每个时间周期给 LLM 多少个周期的历史数据.
+- `prompt:max_leverage`: 最大杠杆.
 - `trader:mode`: 可选模式: `"live"` 和 `"backtest"`.
 - `trader:timeframe`: 交易周期 (每隔多长时间向 LLM 发出请求).
 - `trader:symbols`: 交易对列表.

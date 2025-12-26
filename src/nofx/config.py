@@ -78,14 +78,11 @@ class ExchangeConfig(BaseConfig):
 
 @dataclass
 class PromptConfig(BaseConfig):
-    REQUIRED_FIELDS = ["template", "r_ratio", "max_positions", "altcoin_leverage", "BTC_ETH_leverage", "history_span"]
+    REQUIRED_FIELDS = ["template", "max_positions", "max_leverage"]
 
     template: str
-    r_ratio: float
     max_positions: int
-    altcoin_leverage: int
-    BTC_ETH_leverage: int
-    history_span: int
+    max_leverage: int
 
 
 @dataclass
@@ -251,8 +248,8 @@ class Config(BaseConfig):
         """进行配置合法性检查"""
         if not (self.exchange.api_key and self.exchange.secret and self.llm.api_key):
             raise ValueError("必须提供交易所的API key和密钥和大模型的API key")
-        if self.prompt.BTC_ETH_leverage < 1 or self.prompt.altcoin_leverage < 1:
-            raise ValueError(f"杠杆倍数必须为正, 当前BTC/ETH杠杆: {self.prompt.BTC_ETH_leverage:d}x, 山寨币杠杆: {self.prompt.altcoin_leverage:d}x")
+        if self.prompt.max_leverage < 1:
+            raise ValueError(f"杠杆倍数必须为正, 当前最大杠杆: {self.prompt.max_leverage:d}x")
         if self.prompt.max_positions < 1:
             raise ValueError(f"最大持仓数必须为正, 当前: {self.prompt.max_positions:d}")
         if len(self.trader.symbols) == 0:

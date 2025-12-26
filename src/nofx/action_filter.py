@@ -17,13 +17,11 @@ class ActionFilter(BaseClassWithLogger):
         ActionType.DoNothing: 3,
     }
 
-    def __init__(self, r_ratio: float, altcoin_leverage: int, BTC_ETH_leverage: int, max_positions: int, restricts: Dict[str, Tuple[float, float]], logger: Optional[logging.Logger] = None, **kwargs):
+    def __init__(self, max_positions: int, max_leverage: int, restricts: Dict[str, Tuple[float, float]], logger: Optional[logging.Logger] = None, **kwargs):
         super().__init__(logger=logger)
 
-        self.r_ratio = r_ratio * 0.6  # Hack here: do not restrict R-ratio too strictly
-        self.altcoin_leverage = altcoin_leverage
-        self.BTC_ETH_leverage = BTC_ETH_leverage
         self.max_positions = max_positions
+        self.max_leverage = max_leverage
 
         self.restricts = restricts
 
@@ -68,9 +66,8 @@ class ActionFilter(BaseClassWithLogger):
             if num_position >= self.max_positions:
                 return f"持仓数达到最大值: {num_position:d}"
 
-            max_leverage = self.BTC_ETH_leverage if action.symbol in ["BTC/USDT", "ETH/USDT"] else self.altcoin_leverage
-            if action.leverage <= 0 or action.leverage > max_leverage:
-                return f"杠杆倍数 ({action.leverage:d}x) 大于最大值 ({max_leverage:d}x)"
+            if action.leverage <= 0 or action.leverage > self.max_leverage:
+                return f"杠杆倍数 ({action.leverage:d}x) 大于最大值 ({self.max_leverage:d}x)"
 
             if action.position_size_usd < 0.0:
                 return f"负仓位: ({action.position_size_usd:.2f} USDT)"
@@ -97,12 +94,6 @@ class ActionFilter(BaseClassWithLogger):
                 (action.type == ActionType.OpenShort and not action.take_profit < mark_price < action.stop_loss)
             ):
                 return f"止损价或止盈价无效 (决策: {action.type.name:s}, 当前标记价格: {mark_price:.4e}, 止损价: {action.stop_loss:.4e}, 止盈价: {action.take_profit:.4e})"
-
-            # risk_pct = abs(action.stop_loss - mark_price) / mark_price
-            # reward_pct = abs(mark_price - action.take_profit) / mark_price
-            # r_ratio = reward_pct / risk_pct
-            # if r_ratio < self.r_ratio:
-            #     return f"盈亏比过低 (决策: {action.type.name:s}, 当前标记价格: {mark_price:.4e}, 止损价: {action.stop_loss:.4e}, 止盈价: {action.take_profit:.4e}, 潜在亏损: {risk_pct*100:.1f}%, 潜在盈利: {reward_pct*100:.1f}%, 盈亏比: {r_ratio:.2f})"
 
         elif action.type in [ActionType.CloseLong, ActionType.CloseShort]:
             open_position = None

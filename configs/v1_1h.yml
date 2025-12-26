@@ -12,11 +12,8 @@ exchange:
 
 prompt:
   template: "v1_1h"
-  r_ratio: 2.0
   max_positions: 3
-  altcoin_leverage: 3
-  BTC_ETH_leverage: 5
-  history_span: 100
+  max_leverage: 3
 
 llm:
   model: "deepseek-chat"
@@ -121,7 +118,17 @@ indicators:
         timeperiod: 50
       display_name: "EMA50"
 
-    - name: "ATR"
+    - name: "MACD"
+      params:
+        fastperiod: 12
+        slowperiod: 26
+        signalperiod: 9
+      display_name:
+      - "DIF"
+      - "DEA"
+      - "MACDHIST"
+
+    - name: "RSI"
       params:
         timeperiod: 14
-      display_name: "ATR14"
+      display_name: "RSI14"
