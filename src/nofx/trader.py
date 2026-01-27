@@ -9,7 +9,8 @@ import pandas as pd
 
 from .logger import setup_logger, BaseClassWithLogger
 from .config import Config
-from .structs import Balance, Position, MarketData, Context, Action
+from .enums import ActionType, PositionSide
+from .structs import Balance, Position, MarketData, StrategyData, Context, Action
 from .indicator import add_indicators
 from .prompt import PromptManager
 from .llm_interface import LLMInterface
@@ -17,6 +18,7 @@ from .action_filter import ActionFilter
 from .performance import PerformanceAnalyzer
 from .exchange import Exchange
 from .backtest import BacktestManger
+from .strategies import *
 from .utils import timeframe_to_seconds, format_time_interval
 
 
@@ -75,6 +77,12 @@ class AutoTrader(BaseClassWithLogger):
 
         # init action filter
         self.action_filter = ActionFilter(**asdict(self.config.prompt), restricts=order_restricts, logger=self.logger)
+
+        # init strategy
+        if self.config.strategy.name == "ichimoku":
+            self.strategy = IchimokuStrategy(**self.config.strategy.params)
+        else:
+            raise ValueError(f"不支持的策略: {self.config.strategy.name:s}")
 
     """ Live Trader """
     def next_run_time(self) -> pd.Timestamp:
@@ -174,17 +182,37 @@ class AutoTrader(BaseClassWithLogger):
             raise ValueError(f"不支持的模式: '{self.mode:s}'")
 
     def get_market_data(self) -> MarketData:
+        current_time = self.get_current_time()
         if self.mode == "live":
-            market_data = self.exchange.get_market_data(self.symbols, self.timeframes)
+            market_data = self.exchange.get_market_data(self.symbols, self.timeframes, current_time)
             add_indicators(market_data, self.indicators)
             return market_data
 
         elif self.mode == "backtest":
-            current_time = self.get_current_time()
             return self.backtest_manager.get_market_data(current_time)
 
         else:
             raise ValueError(f"不支持的模式: '{self.mode:s}'")
+
+    def get_strategy_data(self, market_data: MarketData) -> StrategyData:
+        return {
+            symbol: self.strategy.process(symbol_data.data)
+            for symbol, symbol_data in market_data.items()
+        }
+
+    def get_strategy_actions(self, positions: List[Position], strategy_data: StrategyData) -> List[Action]:
+        strategy_actions = []
+        for position in positions:
+            strategy_status = strategy_data[position.symbol]
+            if position.side != strategy_status.state:
+                action_type = ActionType.CloseLong if position.side == PositionSide.Long else ActionType.CloseShort
+                strategy_actions.append(Action(
+                    symbol=position.symbol,
+                    type=action_type,
+                    confidence=100,
+                    reasoning="策略平仓",
+                ))
+        return strategy_actions
 
     def execute_actions(self, actions: List[Action]):
         if self.mode == "live":
@@ -228,44 +256,64 @@ class AutoTrader(BaseClassWithLogger):
     """ Core function """
     def run_cycle(self):
         current_time = self.get_current_time()
-        ctx = Context(
-            current_time=current_time,
-            running_time=current_time - self.start_time,
-            num_cycle=self.num_cycle,
-            balance=self.get_balance(),
-            positions=self.get_positions(),
-            market_data=self.get_market_data(),
-            performance=self.performance_analyzer.get_metrics(),
-        )
+        balance = self.get_balance()
+        positions = self.get_positions()
+        market_data = self.get_market_data()
+        strategy_data = self.get_strategy_data(market_data)
+        performance_metrics = self.performance_analyzer.get_metrics()
 
         self.info("=" * 70)
         current_time_str = current_time.strftime("%Y-%m-%d %H:%M:%S")
         self.info(f"*** 周期 #{self.num_cycle:d} | 当前时间: {current_time_str:s} ***")
         self.info("账户信息:")
-        self.info("\t" + ctx.balance.format(self.initial_balance))
-        if len(ctx.positions) > 0:
+        self.info("\t" + balance.format(self.initial_balance))
+        if len(positions) > 0:
             self.info("当前持仓:")
-            for i, position in enumerate(ctx.positions):
+            for i, position in enumerate(positions):
                 self.info(f"\t{i+1:d}. " + position.format(current_time))
 
-        # Generate system and user prompt
-        system_prompt, user_prompt = self.prompt_manager(ctx)
-        self.debug("系统提示词:\n" + system_prompt)
-        self.debug("用户提示词:\n" + user_prompt)
-
-        # Call LLM and parse results
-        reasoning, actions = self.llm_interface(system_prompt, user_prompt)
-        self.info("思维链 (CoT):\n" + reasoning)
-
-        # Filter actions
-        actions = self.action_filter(actions, ctx)
+        # Close positions by strategy
+        actions = self.get_strategy_actions(positions, strategy_data)
         if len(actions) > 0:
-            self.info("AI决策:")
+            self.info("策略决策:")
             for i, action in enumerate(actions):
                 self.info(f"\t{i+1:d}. " + action.format())
 
-        # Execute actions
         self.execute_actions(actions)
+
+        positions = self.get_positions()
+        if len(positions) > 0 or any((status.action == ActionType.OpenLong or status.state == PositionSide.Long) for status in strategy_data.values()):
+            ctx = Context(
+                current_time=current_time,
+                running_time=current_time - self.start_time,
+                num_cycle=self.num_cycle,
+                balance=balance,
+                positions=positions,
+                market_data=market_data,
+                strategy_data=strategy_data,
+                performance=performance_metrics,
+            )
+
+            # Generate system and user prompt
+            system_prompt, user_prompt = self.prompt_manager(ctx)
+            self.debug("系统提示词:\n" + system_prompt)
+            self.debug("用户提示词:\n" + user_prompt)
+
+            # Call LLM and parse results
+            reasoning, actions = self.llm_interface(system_prompt, user_prompt)
+            self.info("思维链 (CoT):\n" + reasoning)
+
+            # Filter actions
+            actions = self.action_filter(actions, ctx)
+            if len(actions) > 0:
+                self.info("AI决策:")
+                for i, action in enumerate(actions):
+                    self.info(f"\t{i+1:d}. " + action.format())
+
+            # Execute actions
+            self.execute_actions(actions)
+        else:
+            self.info("当前无持仓且所有交易对均不满足开仓条件, 不执行AI决策")
 
         # Analyze performance
         balance = self.get_balance()

@@ -20,7 +20,6 @@ pip install .
 - `llm:api_key`: LLM的密钥 ([Deepseek 官网](https://platform.deepseek.com/)).
 - `logger:level_name`: 默认 `"INFO"`, 如果希望打印提示词, 设置为 `"DEBUG"`.
 - `prompt:template`: 使用的系统提示词模板.
-- `prompt:r_ratio`: 每个决策的最小盈亏比 (仅在提示词中提及该最小盈亏比, 在决策筛选中并未按照盈亏比筛选, 也就是说 LLM 可能给出盈亏比低于该值的决策).
 - `prompt:max_positions`: 最大持仓数.
 - `prompt:altcoin_leverage`: 山寨币的最大杠杆.
 - `prompt:BTC_ETH_leverage`: BTC 和 ETH 的最大杠杆.
@@ -45,7 +44,7 @@ params:
   timeperiod: 7
 display_name: "EMA7"
 ```
-- `name`: 表示技术指标的名称, 现支持 `"SMA"`/`"EMA"`/`"BBANDS"`/`"MACD"`/`"RSI"`/`"ATR"`/`"KDJ"`/`"ICHIMOKU"`.
+- `name`: 表示技术指标的名称, 现支持 `"SMA"`/`"EMA"`/`"STDDEV"`/`"BBANDS"`/`"MACD"`/`"RSI"`/`"ATR"`/`"ADX"`/`"KDJ"`/`"HEIKINASHI"`/`"ICHIMOKU"`/`"VOLSMA"`/`"VOLEMA"`.
 - `params`: 技术指标的参数, 以 `"参数名": 参数值` 的字典的形式.
 - `display_name`: 技术指标传递给 LLM 时的名称, 如果该技术指标有多个值 (如 MACD), 该参数应为一个列表.
 
@@ -56,7 +55,7 @@ display_name: "EMA7"
 
 回测数据下载:
 ```bash
-python generate_data.py configs/default.yml [--start-time 20240101-000000] [--end-time 20250701-000000] [--symbols BTC/USDT ETH/USDT] [--timeframes 1m 5m 1h]
+python generate_data.py configs/ichimoku.yml [--start-time 20240101-000000] [--end-time 20250701-000000] [--symbols BTC/USDT ETH/USDT] [--timeframes 1m 5m 1h]
 ```
 
 可选参数: `--start-time`/`--end-time`/`--symbols`/`--timeframes`, 如果不指定参数, 则使用配置文件中的相应参数.
@@ -67,7 +66,7 @@ python generate_data.py configs/default.yml [--start-time 20240101-000000] [--en
 
 # 运行程序
 ```bash
-python main.py configs/default.yml
+python main.py configs/ichimoku.yml
 ```
 
 ## 程序输出

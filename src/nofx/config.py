@@ -78,10 +78,9 @@ class ExchangeConfig(BaseConfig):
 
 @dataclass
 class PromptConfig(BaseConfig):
-    REQUIRED_FIELDS = ["template", "r_ratio", "max_positions", "altcoin_leverage", "BTC_ETH_leverage", "history_span"]
+    REQUIRED_FIELDS = ["template", "max_positions", "altcoin_leverage", "BTC_ETH_leverage", "history_span"]
 
     template: str
-    r_ratio: float
     max_positions: int
     altcoin_leverage: int
     BTC_ETH_leverage: int
@@ -124,6 +123,13 @@ class BacktestConfig(BaseConfig):
         return data
 
 @dataclass
+class StrategyConfig(BaseConfig):
+    REQUIRED_FIELDS = ["name", "params"]
+
+    name: str
+    params: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
 class TraderConfig(BaseConfig):
     REQUIRED_FIELDS = ["mode", "timeframe", "save_folder", "symbols"]
 
@@ -153,6 +159,7 @@ class Config(BaseConfig):
     exchange: Optional[ExchangeConfig]
     backtest: Optional[BacktestConfig]
 
+    strategy: StrategyConfig
     trader: TraderConfig
 
     indicators: Dict[str, Any] = field(default_factory=dict)
@@ -186,6 +193,7 @@ class Config(BaseConfig):
 
         exchange = ExchangeConfig.from_dict(data["exchange"]) if "exchange" in data else None
         backtest = BacktestConfig.from_dict(data["backtest"]) if "backtest" in data else None
+        strategy = StrategyConfig.from_dict(data["strategy"]) if "strategy" in data else None
         indicators = cls.resolve_indicators(data.get("indicators", {}))
 
         return Config(
@@ -195,6 +203,7 @@ class Config(BaseConfig):
             exchange=exchange,
             backtest=backtest,
             trader=trader,
+            strategy=strategy,
             indicators=indicators,
         )
 

@@ -248,7 +248,14 @@ class SymbolData:
         return "\n\n".join(parts)
 
 
+@dataclass
+class StrategyStatus:
+    action: ActionType = ActionType.DoNothing
+    state: PositionSide = PositionSide.MAX_NUM
+
+
 MarketData = Dict[str, SymbolData]
+StrategyData = Dict[str, StrategyStatus]
 
 
 @dataclass
@@ -258,10 +265,11 @@ class Context:
     num_cycle: int
 
     balance: Balance
-    positions: List[Position]
-    market_data: MarketData
-
     performance: Metrics
+
+    positions: List[Position] = field(default_factory=list)
+    market_data: MarketData = field(default_factory=dict)
+    strategy_data: StrategyData = field(default_factory=dict)
 
 
 @dataclass
@@ -271,7 +279,7 @@ class Action:
     leverage: int = 0
     position_size_usd: float = 0.0
     stop_loss: float = 0.0
-    take_profit: float = 0.0
+    take_profit: Optional[float] = None
     confidence: int = 0
     reasoning: str = ""
 
@@ -283,13 +291,13 @@ class Action:
                 f"仓位: {self.position_size_usd:.2f} USDT",
                 f"杠杆: {self.leverage:d}x",
                 f"止损价: {self.stop_loss:.4e}",
-                f"止盈价: {self.take_profit:.4e}",
             ])
+            if self.take_profit is not None:
+                parts.append(f"止盈价: {self.take_profit:.4e}")
         elif self.type == ActionType.AdjustOrder:
-            parts.extend([
-                f"止损价: {self.stop_loss:.4e}",
-                f"止盈价: {self.take_profit:.4e}",
-            ])
+            parts.append(f"止损价: {self.stop_loss:.4e}")
+            if self.take_profit is not None:
+                parts.append(f"止盈价: {self.take_profit:.4e}")
 
         parts.extend([f"置信度: {self.confidence:d}", f"原因: {self.reasoning:s}"])
 
@@ -324,20 +332,22 @@ class Action:
         }
 
         if action_type in [ActionType.OpenLong, ActionType.OpenShort]:
-            if not ("leverage" in data and "position_size_usd" in data and "stop_loss" in data and "take_profit" in data and "confidence" in data and "reasoning" in data):
+            if not ("leverage" in data and "position_size_usd" in data and "stop_loss" in data and "confidence" in data and "reasoning" in data):
                 return None
 
             kwargs["leverage"] = int(data["leverage"])
             kwargs["position_size_usd"] = float(data["position_size_usd"])
             kwargs["stop_loss"] = float(data["stop_loss"])
-            kwargs["take_profit"] = float(data["take_profit"])
+            if "take_profit" in data and data["take_profit"] is not None:
+                kwargs["take_profit"] = float(data["take_profit"])
 
         elif action_type == ActionType.AdjustOrder:
-            if not ("stop_loss" in data and "take_profit" in data):
+            if "stop_loss" not in data:
                 return None
 
             kwargs["stop_loss"] = float(data["stop_loss"])
-            kwargs["take_profit"] = float(data["take_profit"])
+            if "take_profit" in data and data["take_profit"] is not None:
+                kwargs["take_profit"] = float(data["take_profit"])
 
         return Action(**kwargs)
 

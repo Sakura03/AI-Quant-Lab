@@ -1,6 +1,6 @@
 logger:
-  name: "default"
-  log_file: "logs/default.txt"
+  name: "ichimoku"
+  log_file: "logs/ichimoku.txt"
   level_name: "INFO"
 
 exchange:
@@ -11,11 +11,10 @@ exchange:
   enable_rate_limit: true
 
 prompt:
-  template: "default"
-  r_ratio: 3.0
+  template: "ichimoku"
   max_positions: 3
   altcoin_leverage: 3
-  BTC_ETH_leverage: 5
+  BTC_ETH_leverage: 3
   history_span: 30
 
 llm:
@@ -29,88 +28,92 @@ backtest:
   initial_balance: 10000.0
   data_folder: "data"
 
+strategy:
+  name: ichimoku
+  params: {}
+
 trader:
   mode: "live"  # choices: ["backtest", "live"]
   timeframe: "4h"
-  save_folder: "results/default"
+  save_folder: "results/ichimoku"
   # symbols: ["BTC/USDT", "ETH/USDT"]
   symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "SUI/USDT"]
   # symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "DOGE/USDT", "ADA/USDT", "AAVE/USDT", "SUI/USDT", "1000PEPE/USDT"]
 
 indicators:
-  "15m":
+  "1h":
   - name: "EMA"
     params:
-      timeperiod: 7
-    display_name: "EMA7"
+      timeperiod: 9
+    display_name: "EMA9"
 
   - name: "EMA"
     params:
-      timeperiod: 20
-    display_name: "EMA20"
+      timeperiod: 21
+    display_name: "EMA21"
 
   - name: "EMA"
     params:
       timeperiod: 50
     display_name: "EMA50"
 
-  - name: "BBANDS"
-    params:
-      timeperiod: 20
-      nbdevup: 2
-      nbdevdn: 2
+  "4h":
+  - name: "heikinashi"
+    params: {}
     display_name:
-    - "BBANDS_UPPER"
-    - "BBANDS_MID"
-    - "BBANDS_LOWER"
-
-  - name: "MACD"
-    params:
-      fastperiod: 12
-      slowperiod: 26
-      signalperiod: 9
-    display_name:
-    - "DIF"
-    - "DEA"
-    - "MACDHIST"
-
-  - name: "RSI"
-    params:
-      timeperiod: 7
-    display_name: "RSI7"
-
-  - name: "RSI"
-    params:
-      timeperiod: 14
-    display_name: "RSI14"
+    - "ha_open"
+    - "ha_high"
+    - "ha_low"
+    - "ha_close"
 
   - name: "ATR"
     params:
       timeperiod: 14
     display_name: "ATR14"
 
-  - name: "KDJ"
+  - name: "ADX"
     params:
-      fastk_period: 14
-      slowk_period: 3
-      slowd_period: 3
+      timeperiod: 14
+    display_name: "ADX14"
+
+  - name: "MACD"
+    params:
+      fastperiod: 12
+      slowperiod: 26
+      signalperiod: 14
     display_name:
-    - "K"
-    - "D"
-    - "J"
+    - "MACD"
+    - "MACD_signal"
+    - "MACD_hist"
 
-  # - name: "ichimoku"
-  #   params:
-  #     conversion_line_period: 9
-  #     base_line_period: 26
-  #     lagging_span: 52
-  #     displacement: 26
-  #   display_name:
-  #   - "TenkanSen"
-  #   - "KijunSen"
-  #   - "SenkouSpanA"
-  #   - "SenkouSpanB"
+  - name: "RSI"
+    params:
+      timeperiod: 14
+    display_name: "RSI14"
 
-  "4h": "15m"  # use the same indicators as 15m
+  - name: "BBANDS"
+    params:
+      timeperiod: 20
+    display_name:
+    - "BBANDS_upper"
+    - "BBANDS_middle"
+    - "BBANDS_lower"
 
-  "1d": "15m"
+  - name: "VOLSMA"
+    params:
+      timeperiod: 20
+    display_name: "VOL_MA20"
+
+  "1d":
+  - name: "ichimoku"
+    params:
+      conversion_line_period: 20
+      base_line_period: 60
+      lagging_span: 120
+      displacement: 30
+      use_heikinashi: true
+    display_name:
+    - "TenkanSen"
+    - "KijunSen"
+    - "SenkouSpanA"
+    - "SenkouSpanB"

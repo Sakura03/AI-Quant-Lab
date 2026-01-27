@@ -17,10 +17,9 @@ class ActionFilter(BaseClassWithLogger):
         ActionType.DoNothing: 3,
     }
 
-    def __init__(self, r_ratio: float, altcoin_leverage: int, BTC_ETH_leverage: int, max_positions: int, restricts: Dict[str, Tuple[float, float]], logger: Optional[logging.Logger] = None, **kwargs):
+    def __init__(self, altcoin_leverage: int, BTC_ETH_leverage: int, max_positions: int, restricts: Dict[str, Tuple[float, float]], logger: Optional[logging.Logger] = None, **kwargs):
         super().__init__(logger=logger)
 
-        self.r_ratio = r_ratio * 0.6  # Hack here: do not restrict R-ratio too strictly
         self.altcoin_leverage = altcoin_leverage
         self.BTC_ETH_leverage = BTC_ETH_leverage
         self.max_positions = max_positions
@@ -89,20 +88,19 @@ class ActionFilter(BaseClassWithLogger):
             if available_balance < action.position_size_usd / action.leverage:
                 return f"保证金不足 (可用保证金: {available_balance:.2f} USDT, 仓位: {action.position_size_usd:.2f} USDT, 杠杆: {action.leverage:d}x)"
 
-            if action.stop_loss < 0.0 or action.take_profit < 0.0:
-                return f"止损价或止盈价为负 (止损价: {action.stop_loss:.4e}, 止盈价: {action.stop_loss:.4e})"
-
             if (
-                (action.type == ActionType.OpenLong and not action.stop_loss < mark_price < action.take_profit) or \
-                (action.type == ActionType.OpenShort and not action.take_profit < mark_price < action.stop_loss)
+                action.stop_loss < 0.0 or \
+                (action.type == ActionType.OpenLong and action.stop_loss > mark_price) or \
+                (action.type == ActionType.OpenShort and action.stop_loss < mark_price)
             ):
-                return f"止损价或止盈价无效 (决策: {action.type.name:s}, 当前标记价格: {mark_price:.4e}, 止损价: {action.stop_loss:.4e}, 止盈价: {action.take_profit:.4e})"
+                return f"无效的止损价 (决策: {action.type.name:s}, 当前标记价格: {mark_price:.4e}, 止损价: {action.stop_loss:.4e})"
 
-            # risk_pct = abs(action.stop_loss - mark_price) / mark_price
-            # reward_pct = abs(mark_price - action.take_profit) / mark_price
-            # r_ratio = reward_pct / risk_pct
-            # if r_ratio < self.r_ratio:
-            #     return f"盈亏比过低 (决策: {action.type.name:s}, 当前标记价格: {mark_price:.4e}, 止损价: {action.stop_loss:.4e}, 止盈价: {action.take_profit:.4e}, 潜在亏损: {risk_pct*100:.1f}%, 潜在盈利: {reward_pct*100:.1f}%, 盈亏比: {r_ratio:.2f})"
+            if action.take_profit is not None and (
+                action.take_profit < 0.0 or \
+                (action.type == ActionType.OpenLong and action.take_profit < mark_price) or \
+                (action.type == ActionType.OpenShort and action.take_profit > mark_price)
+            ):
+                return f"无效的止盈价 (决策: {action.type.name:s}, 当前标记价格: {mark_price:.4e}, 止盈价: {action.take_profit:.4e})"
 
         elif action.type in [ActionType.CloseLong, ActionType.CloseShort]:
             open_position = None
@@ -132,9 +130,17 @@ class ActionFilter(BaseClassWithLogger):
 
             mark_price = ctx.market_data[action.symbol].mark_price
             if (
-                (open_position.side == PositionSide.Long and not action.stop_loss < mark_price < action.take_profit) or \
-                (open_position.side == PositionSide.Short and not action.take_profit < mark_price < action.stop_loss)
+                action.stop_loss < 0.0 or \
+                (open_position.side == PositionSide.Long and action.stop_loss > mark_price) or \
+                (open_position.side == PositionSide.Short and action.stop_loss < mark_price)
             ):
-                return f"止损价或止盈价无效 (持仓方向: {open_position.side.name:s}, 当前标记价格: {mark_price:.4e}, 止损价: {action.stop_loss:.4e}, 止盈价: {action.take_profit:.4e})"
+                return f"无效的止损价 (持仓方向: {open_position.side.name:s}, 当前标记价格: {mark_price:.4e}, 止损价: {action.stop_loss:.4e})"
+
+            if action.take_profit is not None and (
+                action.take_profit < 0.0 or \
+                (open_position.side == PositionSide.Long and action.take_profit < mark_price) or \
+                (open_position.side == PositionSide.Short and action.take_profit > mark_price)
+            ):
+                return f"无效的止盈价 (持仓方向: {open_position.side.name:s}, 当前标记价格: {mark_price:.4e}, 止盈价: {action.take_profit:.4e})"
 
         return ""

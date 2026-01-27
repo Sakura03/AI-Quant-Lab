@@ -32,6 +32,8 @@ if __name__ == "__main__":
 
     start_time = args.start_time or config.backtest.start_time
     end_time = args.end_time or config.backtest.end_time
+    start_time = pd.to_datetime(start_time, format="%Y%m%d-%H%M%S")
+    end_time = pd.to_datetime(end_time, format="%Y%m%d-%H%M%S")
 
     exchange = Exchange(**asdict(config.exchange), logger=logger)
 
