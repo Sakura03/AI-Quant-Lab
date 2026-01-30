@@ -101,3 +101,46 @@ def fetch_lastest_data(df: pd.DataFrame, time: pd.Timestamp, cols: List[str], av
 
     # 取最后一行的 close 值
     return filtered.iloc[-1][cols].values.tolist()
+
+
+def merge_timeframes(base: pd.DataFrame, informative: pd.DataFrame, suffix: str, base_timestamp_col: str = "timestamp", inf_timestamp_col: str  = "timestamp"):
+    """
+        把高周期 K 线数据, 按时间对齐, 向前填充, 融合到低周期 K 线数据, 不允许用未来数据 (no lookahead).
+
+        参数:
+            base: pd.DataFrame
+                基础 K 线数据, 合并后保留其原始列名
+            informative: pd.DataFrame
+                高周期 K 线数据, 合并后其列名将添加指定后缀
+            suffix: str
+                指定后缀, 用于重命名 informative DataFrame 列
+            base_timestamp_col: str
+                基础 K 线数据的时间列名
+            informative_timestamp_col: str
+                高周期 K 线数据的时间列名
+
+        返回:
+            pd.DataFrame: 合并后的 K 线数据, 包含 base 的所有行和 informative 中对应时间点的最新数据
+    """
+
+    base = base.copy()
+    informative = informative.copy()
+
+    base_period = infer_period(base)
+    inf_period = infer_period(informative)
+
+    # 向右偏移一个周期，使低周期匹配到上一个完整高周期
+    base["timestamp"] += base_period
+    informative["timestamp"] += inf_period
+
+    df = pd.merge_asof(
+        base,
+        informative,
+        left_on=base_timestamp_col,
+        right_on=inf_timestamp_col,
+        direction="backward",
+        suffixes=("", suffix),
+    )
+    df["timestamp"] -= base_period
+
+    return df

@@ -12,5 +12,5 @@ from .structs import Balance, Position, ClosedPosition, SymbolData, MarketData, 
 from .trader import AutoTrader
 from .utils import (timeframe_to_seconds, format_timeframe, format_time_interval, format_symbol,
                     parse_dataframe, infer_period, truncate_dataframe, fetch_lastest_data,
-                    calculate_liquidation_price, count_tokens_text, count_tokens_messages,
-                    visualize_snapshots, visualize_funding_curve, visualize_candle_and_position)
+                    calculate_liquidation_price, count_tokens_text, count_tokens_messages)
+from .visualization import visualize_snapshots, visualize_funding_curve, visualize_candle_and_position, visualize_ichimoku

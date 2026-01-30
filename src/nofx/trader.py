@@ -224,6 +224,43 @@ class AutoTrader(BaseClassWithLogger):
         else:
             raise ValueError(f"不支持的模式: '{self.mode:s}'")
 
+    """
+    def get_fake_actions(self, ctx: Context) -> List[Action]:
+        import random
+
+        positions = ctx.positions
+        market_data = ctx.market_data
+        strategy_data = ctx.strategy_data
+
+        symbols_used = []
+        if len(positions) > 0:
+            for i, position in enumerate(positions):
+                symbols_used.append(position.symbol)
+
+        candidates_to_open, candidates_to_reentry = [], []
+        for symbol in market_data.keys():
+            if symbol not in symbols_used:
+                if strategy_data[symbol].action == ActionType.OpenLong:
+                    candidates_to_open.append(symbol)
+                elif strategy_data[symbol].state == PositionSide.Long:
+                    candidates_to_reentry.append(symbol)
+
+        actions = []
+        num_position = len(positions)
+        position = ctx.balance.available_balance
+        for symbol in symbols_used:
+            if random.random() < 0.1:
+                actions.append(Action(symbol=symbol, type=ActionType.CloseLong, confidence=80, reasoning="随机平仓"))
+                num_position -= 1
+        if num_position < self.config.prompt.max_positions:
+            position_size = ctx.balance.available_balance / (self.config.prompt.max_positions - num_position) * 2 * 0.95
+            for symbol in candidates_to_open + candidates_to_reentry:
+                if random.random() < 0.2:
+                    actions.append(Action(symbol=symbol, type=ActionType.OpenLong, leverage=2, position_size_usd=position_size, stop_loss=market_data[symbol].mark_price * 0.8, confidence=80, reasoning="随机开仓"))
+
+        return actions
+    """
+
     def run(self):
         if self.mode == "live":
             self.run_live()
@@ -273,15 +310,16 @@ class AutoTrader(BaseClassWithLogger):
                 self.info(f"\t{i+1:d}. " + position.format(current_time))
 
         # Close positions by strategy
-        actions = self.get_strategy_actions(positions, strategy_data)
-        if len(actions) > 0:
+        strategy_actions = self.get_strategy_actions(positions, strategy_data)
+        if len(strategy_actions) > 0:
             self.info("策略决策:")
-            for i, action in enumerate(actions):
+            for i, action in enumerate(strategy_actions):
                 self.info(f"\t{i+1:d}. " + action.format())
 
-        self.execute_actions(actions)
+        self.execute_actions(strategy_actions)
 
         positions = self.get_positions()
+        ai_actions = []
         if len(positions) > 0 or any((status.action == ActionType.OpenLong or status.state == PositionSide.Long) for status in strategy_data.values()):
             ctx = Context(
                 current_time=current_time,
@@ -300,18 +338,19 @@ class AutoTrader(BaseClassWithLogger):
             self.debug("用户提示词:\n" + user_prompt)
 
             # Call LLM and parse results
-            reasoning, actions = self.llm_interface(system_prompt, user_prompt)
+            reasoning, ai_actions = self.llm_interface(system_prompt, user_prompt)
             self.info("思维链 (CoT):\n" + reasoning)
+            # ai_actions = self.get_fake_actions(ctx)
 
             # Filter actions
-            actions = self.action_filter(actions, ctx)
-            if len(actions) > 0:
+            ai_actions = self.action_filter(ai_actions, ctx)
+            if len(ai_actions) > 0:
                 self.info("AI决策:")
-                for i, action in enumerate(actions):
+                for i, action in enumerate(ai_actions):
                     self.info(f"\t{i+1:d}. " + action.format())
 
             # Execute actions
-            self.execute_actions(actions)
+            self.execute_actions(ai_actions)
         else:
             self.info("当前无持仓且所有交易对均不满足开仓条件, 不执行AI决策")
 
@@ -322,4 +361,4 @@ class AutoTrader(BaseClassWithLogger):
         self.info("评测指标: " + metrics.format())
         self.info("=" * 70)
 
-        self.dump_snapshot(actions)
+        self.dump_snapshot(strategy_actions + ai_actions)

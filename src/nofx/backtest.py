@@ -9,8 +9,8 @@ from .enums import PositionSide, ActionType
 from .structs import Balance, Position, ClosedPosition, SymbolData, MarketData, Action
 from .indicator import add_indicator
 from .performance import PerformanceAnalyzer
-from .utils import (parse_dataframe, fetch_lastest_data, truncate_dataframe, calculate_liquidation_price,
-                    visualize_funding_curve, visualize_candle_and_position)
+from .utils import parse_dataframe, fetch_lastest_data, truncate_dataframe, calculate_liquidation_price
+from .visualization import visualize_funding_curve, visualize_candle_and_position, visualize_ichimoku
 
 
 class BacktestManger(BaseClassWithLogger):
@@ -242,38 +242,40 @@ class BacktestManger(BaseClassWithLogger):
             if position.stop_loss is not None or position.take_profit is not None:
                 df = self.data_dict[position.symbol]["1m"]
                 start_time = max(self.last_tick, position.entry_time)
-                df = df[(df["timestamp"] > start_time) & (df["timestamp"] <= current_time)]
-                for j in range(len(df)):
-                    ts, high, low = df.iloc[j][["timestamp", "high", "low"]]
-                    high, low = float(high), float(low)
+                df = truncate_dataframe(df, start_time=start_time, end_time=current_time)
 
-                    exit_price, reason = None, None
-                    # Consider the worst case: stop loss occurs ahead of take profit
-                    if (
-                        position.stop_loss is not None and \
-                        (
-                            (position.side == PositionSide.Long and low < position.stop_loss) or \
-                            (position.side == PositionSide.Short and high > position.stop_loss)
-                        )
-                    ):
+                stop_loss_hit = pd.Series(False, index=df.index)
+                take_profit_hit = pd.Series(False, index=df.index)
+                if position.stop_loss is not None:
+                    if position.side == PositionSide.Long:
+                        stop_loss_hit = df["low"] < position.stop_loss
+                    else:
+                        stop_loss_hit = df["high"] > position.stop_loss
+                if position.take_profit is not None:
+                    if position.side == PositionSide.Long:
+                        take_profit_hit = df["high"] > position.take_profit
+                    else:
+                        take_profit_hit = df["low"] < position.take_profit
+
+                if stop_loss_hit.any() or take_profit_hit.any():
+                    stop_loss_idx = stop_loss_hit.idxmax() if stop_loss_hit.any() else None
+                    take_profit_idx = take_profit_hit.idxmax() if take_profit_hit.any() else None
+
+                    # 止损优先
+                    if stop_loss_idx is not None and (take_profit_idx is None or stop_loss_idx <= take_profit_idx):
+                        exit_idx = stop_loss_idx
                         exit_price = position.stop_loss
                         reason = "止损"
-                    elif (
-                        position.take_profit is not None and \
-                        (
-                            (position.side == PositionSide.Long and high > position.take_profit) or \
-                            (position.side == PositionSide.Short and low < position.take_profit)
-                        )
-                    ):
+                    else:
+                        exit_idx = take_profit_idx
                         exit_price = position.take_profit
                         reason = "止盈"
 
                     # close position
-                    if exit_price is not None:
-                        self.close_position(i, ts, exit_price=exit_price)
-                        position_closed = True
-                        self.info(f">>> 自动平仓: {position.symbol:s} {position.side.name:s} | 开仓价: {position.entry_price:.4e} | {reason:s}价: {exit_price:.4e}")
-                        break
+                    exit_time: pd.Timestamp = df.loc[exit_idx, "timestamp"]
+                    self.close_position(i, exit_time, exit_price=exit_price)
+                    position_closed = True
+                    self.info(f">>> 自动平仓: {position.symbol:s} {position.side.name:s} | 时间: {exit_time.strftime("%Y-%m-%d %H:%M:%S"):s} | 开仓价: {position.entry_price:.4e} | {reason:s}价: {exit_price:.4e}")
 
             if not position_closed:
                 mark_price = self.get_mark_price(position.symbol, current_time)
@@ -307,11 +309,13 @@ class BacktestManger(BaseClassWithLogger):
         if self.analyzer:
             visualize_funding_curve(self.analyzer.balance, save_path=osp.join(save_folder, "funding.png"), funding_col="equity")
 
-        position_data = pd.DataFrame(columns=["symbol", "buy_time", "buy_price", "sell_time", "sell_price"])
+        position_data = pd.DataFrame(columns=["symbol", "position_side", "buy_time", "buy_price", "sell_time", "sell_price", "quantity", "leverage", "pnl", "pnl_pct"])
         for i, cp in enumerate(self.closed_positions):
             if cp.side == PositionSide.Long:
-                position_data.loc[i] = [cp.symbol, cp.entry_time, cp.entry_price, cp.exit_time, cp.exit_price]
+                position_data.loc[i] = [cp.symbol, cp.side.name, cp.entry_time, cp.entry_price, cp.exit_time, cp.exit_price, cp.quantity, cp.leverage, cp.pnl, cp.pnl_pct]
             else:
-                position_data.loc[i] = [cp.symbol, cp.exit_time, cp.exit_price, cp.entry_time, cp.entry_price]
+                position_data.loc[i] = [cp.symbol, cp.side.name, cp.exit_time, cp.exit_price, cp.entry_time, cp.entry_price, cp.quantity, cp.leverage, cp.pnl, cp.pnl_pct]
 
         visualize_candle_and_position(self.symbols, self.timeframes, self.start_time, self.end_time, self.data_dict, position_data, save_folder)
+        visualize_ichimoku(self.symbols, self.start_time, self.end_time, self.data_dict, position_data, save_folder, indicator_params=self.indicators)
+        position_data.to_csv(osp.join(save_folder, "positions.csv"), index=False)
