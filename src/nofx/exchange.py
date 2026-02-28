@@ -177,11 +177,10 @@ class Exchange(BaseClassWithLogger):
         all_candles = []
         since = start_time.value // int(1e6)
         until = end_time.value // int(1e6)
-        limit = 200
 
         ms = since
         while True:
-            candles = self.fetch_ohlcv(symbol, timeframe=timeframe, since=ms, limit=limit)
+            candles = self.fetch_ohlcv(symbol, timeframe=timeframe, since=ms)
             if not candles:
                 break
 

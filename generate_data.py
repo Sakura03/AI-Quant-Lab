@@ -30,8 +30,8 @@ if __name__ == "__main__":
     if "1m" not in timeframes:
         timeframes.append("1m")
 
-    start_time = args.start_time or config.backtest.start_time
-    end_time = args.end_time or config.backtest.end_time
+    start_time = pd.to_datetime(args.start_time, format="%Y%m%d-%H%M%S") or config.backtest.start_time
+    end_time = pd.to_datetime(args.end_time, format="%Y%m%d-%H%M%S") or config.backtest.end_time
 
     exchange = Exchange(**asdict(config.exchange), logger=logger)
 
