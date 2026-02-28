@@ -185,8 +185,18 @@ class BacktestEngine:
         if next_exec_close_time not in exec_idx.index:
             return None
 
-        raw_open = float(exec_idx.loc[next_exec_close_time, "open"])
-        est_fill = self.execution.apply_slippage(raw_open, side_to_open_order(target_side))
+        # Position sizing must only use information known at signal close.
+        signal_mark = float(mark_prices.get(symbol, np.nan))
+        if not np.isfinite(signal_mark) or signal_mark <= 0:
+            if signal_time in exec_idx.index:
+                signal_mark = float(exec_idx.loc[signal_time, "close"])
+            else:
+                hist = exec_idx[exec_idx.index <= signal_time]
+                if hist.empty:
+                    return None
+                signal_mark = float(hist.iloc[-1]["close"])
+
+        est_fill = self.execution.apply_slippage(signal_mark, side_to_open_order(target_side))
 
         atr_value = float(feature_row.get("atr", np.nan))
         if not np.isfinite(atr_value) or atr_value <= 0:
@@ -489,13 +499,19 @@ class BacktestEngine:
         mark_prices: dict[str, float] = {}
 
         for idx, ts in enumerate(timeline, start=1):
+            # Use previous known marks for executions that happen at current bar open.
+            # This avoids using current bar close in open-time risk checks.
+            marks_before_bar = dict(mark_prices)
+            self._execute_due_orders(ts, queue, ledger, marks_before_bar)
+
+            self._check_stop_take(ts, ledger)
+
+            # After intrabar execution/stop checks, move marks to current bar close.
             for symbol, exec_idx in self.exec_indexed.items():
                 if ts in exec_idx.index:
                     mark_prices[symbol] = float(exec_idx.loc[ts, "close"])
 
-            self._execute_due_orders(ts, queue, ledger, mark_prices)
             self._apply_funding(ts, ledger, mark_prices)
-            self._check_stop_take(ts, ledger)
             self._generate_signals(ts, queue, ledger, mark_prices)
             ledger.snapshot(ts, mark_prices)
 

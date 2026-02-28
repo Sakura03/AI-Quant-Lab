@@ -158,6 +158,7 @@ class PortfolioLedger:
     def snapshot(self, timestamp: pd.Timestamp, mark_prices: dict[str, float]):
         equity = self.mark_to_market(mark_prices)
         gross = self.gross_notional(mark_prices)
+        drawdown = 0.0 if self.peak_equity <= 0 else max(0.0, 1.0 - equity / self.peak_equity)
 
         max_symbol_share = 0.0
         if gross > 0:
@@ -171,7 +172,7 @@ class PortfolioLedger:
                 "open_positions": len(self.positions),
                 "gross_notional": gross,
                 "turnover": self.turnover_notional,
-                "drawdown": self.current_drawdown(mark_prices),
+                "drawdown": drawdown,
                 "max_symbol_share": max_symbol_share,
             }
         )
@@ -192,6 +193,8 @@ class PortfolioLedger:
             )
         out = pd.DataFrame(self.equity_records)
         out = out.sort_values("timestamp").drop_duplicates(subset=["timestamp"], keep="last")
+        peak = out["equity"].cummax().replace(0.0, pd.NA)
+        out["drawdown"] = (1.0 - out["equity"] / peak).fillna(0.0).clip(lower=0.0)
         return out.reset_index(drop=True)
 
     def trades_frame(self) -> pd.DataFrame:
