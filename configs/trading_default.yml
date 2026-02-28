@@ -1,0 +1,63 @@
+engine:
+  mode: "backtest"
+  seed: 42
+
+data:
+  data_folder: "data"
+  symbols: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "SUI/USDT"]
+  timeframe_signal: "1h"
+  timeframe_execution: "1m"
+  start_time: "20250101-000000"
+  end_time: "20250701-000000"
+  warmup_bars: 300
+
+costs:
+  fee_rate: 0.0005
+  slippage_bps: 2.0
+  funding_rate_enabled: true
+
+risk:
+  initial_balance: 10000.0
+  max_gross_leverage: 2.0
+  risk_per_trade: 0.01
+  max_positions: 3
+  stop_atr_mult: 2.0
+  take_atr_mult: 3.0
+
+strategy:
+  name: "hybrid_trend_meanrev"
+  params:
+    ema_fast: 20
+    ema_slow: 50
+    macd_fast: 12
+    macd_slow: 26
+    macd_signal: 9
+    rsi_period: 14
+    rsi_overbought: 70
+    rsi_oversold: 30
+    rsi_exit_long: 55
+    rsi_exit_short: 45
+    bb_period: 20
+    bb_std: 2.0
+    atr_period: 14
+    adx_period: 14
+    adx_threshold: 25.0
+    stop_atr_mult: 2.0
+    take_atr_mult: 3.0
+    max_hold_bars: 72
+
+optimization:
+  enabled: true
+  method: "walk_forward_random_search"
+  trials: 600
+  train_months: 6
+  valid_months: 2
+  test_months: 2
+  drawdown_limit: 0.20
+  objective_weights:
+    sharpe: 1.0
+    max_drawdown_penalty: 2.0
+    turnover_penalty: 0.1
+
+output:
+  save_folder: "results/trading"
