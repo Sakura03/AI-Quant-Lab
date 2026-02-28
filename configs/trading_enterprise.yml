@@ -1,38 +1,47 @@
 engine:
   seed: 42
-  n_jobs: 4
+  n_jobs: 8
 
 data:
   root: data
-  universe: [BTC/USDT, ETH/USDT, SOL/USDT, SUI/USDT]
+  universe:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+    - BNB/USDT
+    - ADA/USDT
+    - DOGE/USDT
+    - AAVE/USDT
+    - SUI/USDT
+    - 1000PEPE/USDT
   exec_tf: 1m
-  signal_tfs: [15m, 1h]
-  regime_tfs: [4h]
-  start: "20230101-000000"
-  end: "20240101-000000"
-  warmup_bars: 400
+  signal_tfs: [15m, 1h, 4h]
+  regime_tfs: [4h, 1d]
+  start: "20200101-000000"
+  end: "20260201-000000"
+  warmup_bars: 600
   timestamp_semantics: close
 
 split:
-  train_months: 6
-  val_months: 2
-  test_months: 2
-  step_months: 2
-  embargo_days: 2
+  train_months: 18
+  val_months: 3
+  test_months: 3
+  step_months: 3
+  embargo_days: 3
 
 strategies:
   enabled: [trend_following, dip_buying, mean_reversion, hybrid_regime_switch]
-  per_strategy_max_positions: 2
+  per_strategy_max_positions: 3
 
 portfolio:
-  initial_balance: 50000
-  max_gross_leverage: 1.6
-  max_total_positions: 6
+  initial_balance: 100000
+  max_gross_leverage: 1.8
+  max_total_positions: 8
   max_symbol_weight: 0.35
-  target_vol_annual: 0.16
+  target_vol_annual: 0.18
   dd_soft: 0.08
   dd_hard: 0.15
-  min_risk_scale: 0.25
+  min_risk_scale: 0.2
   risk_per_trade: 0.01
 
 costs:
@@ -41,13 +50,13 @@ costs:
   funding_enabled: true
 
 optimizer:
-  trials_per_window: 120
-  population: 30
-  elite_top_k: 8
+  trials_per_window: 800
+  population: 80
+  elite_top_k: 12
   prior_adoption_prob: 0.7
   mutation_strength: 0.2
   crossover_prob: 0.3
-  min_trades_per_window: 10
+  min_trades_per_window: 20
 
 objective:
   weights:

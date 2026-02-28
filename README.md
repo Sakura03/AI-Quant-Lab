@@ -78,3 +78,112 @@ python main.py configs/default.yml
 ```bash
 python visualize.py --snapshot-path results/default_20251118_221840/snapshots --symbols BTC/USDT ETH/USDT --save-path /path/to/image.png
 ```
+
+# Enterprise Trading Framework
+`src/trading` 为多策略、多周期、自进化 walk-forward 框架，统一采用 `timestamp=K线收盘时间` 语义。
+
+## CLI 命令
+查看帮助:
+```bash
+PYTHONPATH=src python -m trading --help
+```
+
+单次回测:
+```bash
+PYTHONPATH=src python -m trading backtest --config configs/trading_enterprise_smoke.yml
+```
+
+Walk-forward 演化优化:
+```bash
+PYTHONPATH=src python -m trading optimize --config configs/trading_enterprise_smoke.yml
+```
+
+极小样本 smoke（用于链路验证）:
+```bash
+PYTHONPATH=src python -m trading optimize --config configs/trading_enterprise_smoke_mini.yml
+```
+
+## 配置文件用途
+- `configs/trading_enterprise.yml`: 正式大规模实验配置。时间跨度最长、标的最多、策略最全、优化预算最高，适合最终评估与报告。
+- `configs/trading_enterprise_smoke.yml`: 常规烟雾测试配置。规模中等，适合日常功能回归与参数逻辑验证。
+- `configs/trading_enterprise_smoke_fast.yml`: 快速迭代配置。缩小标的与时间窗口，trial 数较低，适合开发期高频试错。
+- `configs/trading_enterprise_smoke_mini.yml`: 最小链路配置。预算和数据规模最小，适合快速确认“代码能跑通”。
+
+推荐使用顺序:
+1. 先跑 `trading_enterprise_smoke_mini.yml` 确认链路与环境正常。
+2. 再跑 `trading_enterprise_smoke_fast.yml` 做快速迭代。
+3. 再跑 `trading_enterprise_smoke.yml` 做较完整回归。
+4. 最后跑 `trading_enterprise.yml` 做正式优化与最终评估。
+
+运行中进度监控:
+- `backtest` 会输出时间轴进度（百分比、当前时间、当前持仓数）。
+- `optimize` 会输出窗口进度、trial 进度、当前最佳验证分数，以及每窗口 test 结果摘要。
+- 如需静默模式可加 `--quiet`，例如:
+```bash
+PYTHONPATH=src python -m trading optimize --config configs/trading_enterprise_smoke.yml --quiet
+```
+
+## 如何使用 optimize 模式得到的最优参数进行回测
+`optimize` 完成后会输出 `best_genome.yml`，其中包含:
+- `signal_tf`
+- `regime_tf`
+- `strategy_ids`
+- `strategy_params`（各策略参数）
+
+### 1) 先运行优化
+```bash
+PYTHONPATH=src python -m trading optimize --config configs/trading_enterprise_smoke.yml
+```
+
+### 2) 找到最新优化目录
+```bash
+LATEST_OPT_DIR=$(ls -td results/trading_enterprise/optimize_* | head -n 1)
+echo "$LATEST_OPT_DIR"
+```
+
+### 3) 用 `best_genome.yml` 直接回测
+```bash
+PYTHONPATH=src python -m trading backtest \
+  --config configs/trading_enterprise_smoke.yml \
+  --genome-file "$LATEST_OPT_DIR/best_genome.yml"
+```
+
+### 4) 用同一组最优参数在其它时间段复验（推荐）
+```bash
+PYTHONPATH=src python -m trading backtest \
+  --config configs/trading_enterprise_smoke.yml \
+  --genome-file "$LATEST_OPT_DIR/best_genome.yml" \
+  --start 20240101-000000 \
+  --end 20240601-000000
+```
+
+说明:
+- `--genome-file` 会自动加载优化得到的周期、策略列表和策略参数。
+- 你仍可用 `--signal-tf/--regime-tf/--strategies` 显式覆盖。
+
+## 结果输出文件说明
+结果默认写入 `results/trading_enterprise`，每次运行会创建一个新目录:
+- `backtest_YYYYmmdd_HHMMSS`
+- `optimize_YYYYmmdd_HHMMSS`
+
+### backtest 目录文件
+- `equity_curve.csv`: 权益曲线时间序列，含 `equity/cash/open_positions/gross_notional/turnover/drawdown/max_symbol_share`。
+- `trade_list.csv`: 每笔已平仓交易明细，含 `signal_time/entry_time/exit_time/fees/slippage/funding_pnl`。
+- `metrics.json`: 本次回测核心指标（Sharpe、MaxDD、年化收益、交易数等）。
+- `strategy_bundle.yml`: 本次回测实际使用的 `signal_tf/regime_tf/strategy_ids/strategy_params`。
+- `resolved_config.yml`: 本次运行实际解析后的完整配置（便于复现实验）。
+- `equity_drawdown.html`: 可交互图表，显示资金曲线与回撤率。
+- `equity_drawdown.png`: 资金曲线与回撤率的静态图（便于快速查看/分享）。
+- `symbol_candles/`: 每个标的一张 HTML K 线图（默认按本次策略 `signal_tf` 聚合显示），叠加黑色圆点交易点，并用箭头标注 `buy/sell`（`candles_<SYMBOL>.html`）。
+
+### optimize 目录文件
+- `all_trials.csv`: 全部 trial 记录（每窗口每 trial 的参数与 train/val 指标、得分）。
+- `all_trials.parquet`: 与 `all_trials.csv` 内容相同的 parquet 版本（写入成功时生成）。
+- `window_summary.csv`: 每个 walk-forward 窗口最终入选基因及 train/val/test 指标汇总。
+- `best_genome.yml`: 全流程选出的最优基因（可直接给 `backtest --genome-file`）。
+- `stitched_test_equity.csv`: 所有 test 窗口按时间拼接后的 OOS 权益曲线。
+- `stitched_test_trades.csv`: 所有 test 窗口拼接后的 OOS 交易明细。
+- `stitched_test_metrics.json`: 拼接 OOS 的最终指标（最重要的总评估文件）。
+- `regime_metrics.csv`: 拼接 OOS 在 `bull/bear/sideways` 分段下的指标。
+- `overfit_diagnostics.csv`: 过拟合诊断，重点看 `train_sharpe` 与 `val_sharpe` 差异。
+- `resolved_config.yml`: 本次优化实际解析后的完整配置。

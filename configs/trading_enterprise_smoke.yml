@@ -1,15 +1,19 @@
 engine:
-  seed: 42
+  seed: 7
   n_jobs: 4
 
 data:
   root: data
-  universe: [BTC/USDT, ETH/USDT, SOL/USDT, SUI/USDT]
+  universe:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+    - DOGE/USDT
   exec_tf: 1m
   signal_tfs: [15m, 1h]
   regime_tfs: [4h]
   start: "20230101-000000"
-  end: "20240101-000000"
+  end: "20231201-000000"
   warmup_bars: 400
   timestamp_semantics: close
 
@@ -22,7 +26,7 @@ split:
 
 strategies:
   enabled: [trend_following, dip_buying, mean_reversion, hybrid_regime_switch]
-  per_strategy_max_positions: 2
+  per_strategy_max_positions: 3
 
 portfolio:
   initial_balance: 50000
@@ -41,19 +45,19 @@ costs:
   funding_enabled: true
 
 optimizer:
-  trials_per_window: 120
-  population: 30
-  elite_top_k: 8
+  trials_per_window: 60
+  population: 20
+  elite_top_k: 6
   prior_adoption_prob: 0.7
   mutation_strength: 0.2
   crossover_prob: 0.3
-  min_trades_per_window: 10
+  min_trades_per_window: 8
 
 objective:
   weights:
     sharpe: 1.0
     max_drawdown: 2.2
-    turnover: 0.12
+    turnover: 0.10
     overfit_gap: 0.2
     concentration: 0.5
   hard_limits:

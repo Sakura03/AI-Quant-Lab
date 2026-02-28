@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
-from typing import Any, Dict, Optional
+from typing import Any
 
-import copy
 import os.path as osp
 
 import pandas as pd
@@ -11,187 +10,227 @@ import yaml
 
 
 TIME_FMT = "%Y%m%d-%H%M%S"
+VALID_STRATEGIES = {"trend_following", "dip_buying", "mean_reversion", "hybrid_regime_switch"}
 
 
 def parse_timestamp(value: Any) -> pd.Timestamp:
-    """将配置中的时间值统一转成无时区的 `pd.Timestamp`。"""
     if isinstance(value, pd.Timestamp):
         return value.tz_localize(None) if value.tzinfo is not None else value
     if isinstance(value, str):
-        return pd.to_datetime(value, format=TIME_FMT)
+        try:
+            return pd.to_datetime(value, format=TIME_FMT)
+        except ValueError:
+            return pd.to_datetime(value)
     return pd.to_datetime(value)
 
 
 @dataclass
 class EngineConfig:
-    """运行引擎配置。当前仅支持回测模式。"""
-    mode: str = "backtest"
     seed: int = 42
+    n_jobs: int = 1
 
 
 @dataclass
 class DataConfig:
-    """数据加载相关配置。"""
-    data_folder: str
-    symbols: list[str]
-    timeframe_signal: str = "1h"
-    timeframe_execution: str = "1m"
-    start_time: pd.Timestamp = pd.Timestamp("2025-01-01")
-    end_time: pd.Timestamp = pd.Timestamp("2025-07-01")
-    warmup_bars: int = 300
+    root: str = "data"
+    universe: list[str] = None
+    exec_tf: str = "1m"
+    signal_tfs: list[str] = None
+    regime_tfs: list[str] = None
+    start: pd.Timestamp = pd.Timestamp("2020-01-01")
+    end: pd.Timestamp = pd.Timestamp("2026-02-01")
+    warmup_bars: int = 600
+    timestamp_semantics: str = "close"
+
+    def __post_init__(self):
+        if self.universe is None:
+            self.universe = ["BTC/USDT", "ETH/USDT"]
+        if self.signal_tfs is None:
+            self.signal_tfs = ["1h"]
+        if self.regime_tfs is None:
+            self.regime_tfs = ["4h", "1d"]
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "DataConfig":
-        """从字典构造数据配置，并解析起止时间字段。"""
-        config = cls(**data)
-        config.start_time = parse_timestamp(config.start_time)
-        config.end_time = parse_timestamp(config.end_time)
-        return config
+    def from_dict(cls, data: dict[str, Any]) -> "DataConfig":
+        cfg = cls(**data)
+        cfg.start = parse_timestamp(cfg.start)
+        cfg.end = parse_timestamp(cfg.end)
+        return cfg
 
-    def to_dict(self) -> Dict[str, Any]:
-        """将数据配置序列化为可写入 YAML 的字典。"""
-        data = asdict(self)
-        data["start_time"] = self.start_time.strftime(TIME_FMT)
-        data["end_time"] = self.end_time.strftime(TIME_FMT)
-        return data
+    def to_dict(self) -> dict[str, Any]:
+        out = asdict(self)
+        out["start"] = self.start.strftime(TIME_FMT)
+        out["end"] = self.end.strftime(TIME_FMT)
+        return out
 
 
 @dataclass
-class CostsConfig:
-    """交易成本配置，包括手续费、滑点和资金费开关。"""
-    fee_rate: float = 0.0005
-    slippage_bps: float = 2.0
-    funding_rate_enabled: bool = True
-
-
-@dataclass
-class RiskConfig:
-    """风控参数配置。"""
-    initial_balance: float = 10000.0
-    max_gross_leverage: float = 2.0
-    risk_per_trade: float = 0.01
-    max_positions: int = 3
-    stop_atr_mult: float = 2.0
-    take_atr_mult: float = 3.0
+class SplitConfig:
+    train_months: int = 18
+    val_months: int = 3
+    test_months: int = 3
+    step_months: int = 3
+    embargo_days: int = 3
 
 
 @dataclass
 class StrategyConfig:
-    """策略名称与参数配置。"""
-    name: str = "hybrid_trend_meanrev"
-    params: Dict[str, Any] | None = None
+    enabled: list[str] = None
+    per_strategy_max_positions: int = 3
+
+    def __post_init__(self):
+        if self.enabled is None:
+            self.enabled = [
+                "trend_following",
+                "dip_buying",
+                "mean_reversion",
+                "hybrid_regime_switch",
+            ]
 
 
 @dataclass
-class OptimizationConfig:
-    """参数优化配置。"""
-    enabled: bool = True
-    method: str = "walk_forward_random_search"
-    trials: int = 600
-    train_months: int = 6
-    valid_months: int = 2
-    test_months: int = 2
-    drawdown_limit: float = 0.2
-    objective_weights: Dict[str, float] | None = None
+class PortfolioConfig:
+    initial_balance: float = 100000.0
+    max_gross_leverage: float = 1.8
+    max_total_positions: int = 8
+    max_symbol_weight: float = 0.35
+    target_vol_annual: float = 0.18
+    dd_soft: float = 0.08
+    dd_hard: float = 0.15
+    min_risk_scale: float = 0.2
+    risk_per_trade: float = 0.01
+
+
+@dataclass
+class CostsConfig:
+    fee_rate: float = 0.0005
+    slippage_bps: float = 2.0
+    funding_enabled: bool = True
+
+
+@dataclass
+class OptimizerConfig:
+    trials_per_window: int = 800
+    population: int = 80
+    elite_top_k: int = 12
+    prior_adoption_prob: float = 0.7
+    mutation_strength: float = 0.2
+    crossover_prob: float = 0.3
+    min_trades_per_window: int = 20
+
+
+@dataclass
+class ObjectiveConfig:
+    weights: dict[str, float] = None
+    hard_limits: dict[str, float] = None
 
     def __post_init__(self):
-        """在未提供权重时填充默认目标函数权重。"""
-        if self.objective_weights is None:
-            self.objective_weights = {
+        if self.weights is None:
+            self.weights = {
                 "sharpe": 1.0,
-                "max_drawdown_penalty": 2.0,
-                "turnover_penalty": 0.1,
+                "max_drawdown": 2.2,
+                "turnover": 0.12,
+                "overfit_gap": 0.2,
+                "concentration": 0.5,
             }
+        if self.hard_limits is None:
+            self.hard_limits = {"max_drawdown": 0.15}
 
 
 @dataclass
 class OutputConfig:
-    """输出目录配置。"""
-    save_folder: str = "results/trading"
+    dir: str = "results/trading_enterprise"
 
 
 @dataclass
 class TradingConfig:
-    """交易系统总配置对象。"""
     engine: EngineConfig
     data: DataConfig
+    split: SplitConfig
+    strategies: StrategyConfig
+    portfolio: PortfolioConfig
     costs: CostsConfig
-    risk: RiskConfig
-    strategy: StrategyConfig
-    optimization: OptimizationConfig
+    optimizer: OptimizerConfig
+    objective: ObjectiveConfig
     output: OutputConfig
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TradingConfig":
-        """从原始字典构建并校验总配置。"""
-        if not isinstance(data, dict):
-            raise TypeError("配置必须是 dict")
-
+    def from_dict(cls, raw: dict[str, Any]) -> "TradingConfig":
         cfg = cls(
-            engine=EngineConfig(**data.get("engine", {})),
-            data=DataConfig.from_dict(data["data"]),
-            costs=CostsConfig(**data.get("costs", {})),
-            risk=RiskConfig(**data.get("risk", {})),
-            strategy=StrategyConfig(**data.get("strategy", {})),
-            optimization=OptimizationConfig(**data.get("optimization", {})),
-            output=OutputConfig(**data.get("output", {})),
+            engine=EngineConfig(**raw.get("engine", {})),
+            data=DataConfig.from_dict(raw.get("data", {})),
+            split=SplitConfig(**raw.get("split", {})),
+            strategies=StrategyConfig(**raw.get("strategies", {})),
+            portfolio=PortfolioConfig(**raw.get("portfolio", {})),
+            costs=CostsConfig(**raw.get("costs", {})),
+            optimizer=OptimizerConfig(**raw.get("optimizer", {})),
+            objective=ObjectiveConfig(**raw.get("objective", {})),
+            output=OutputConfig(**raw.get("output", {})),
         )
         cfg.validate()
         return cfg
 
     @staticmethod
-    def parse_config_file(path: str) -> "TradingConfig":
-        """从 YAML 文件读取配置并解析成 `TradingConfig`。"""
-        if not osp.exists(path):
-            raise FileNotFoundError(f"文件不存在: {path}")
+    def parse_file(path: str) -> "TradingConfig":
+        if not osp.isfile(path):
+            raise FileNotFoundError(f"Config file not found: {path}")
         with open(path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-        return TradingConfig.from_dict(data)
+            raw = yaml.safe_load(f)
+        if not isinstance(raw, dict):
+            raise TypeError("Config root must be a mapping")
+        return TradingConfig.from_dict(raw)
 
-    def to_dict(self) -> Dict[str, Any]:
-        """将总配置转换为可序列化字典。"""
+    def to_dict(self) -> dict[str, Any]:
         return {
             "engine": asdict(self.engine),
             "data": self.data.to_dict(),
+            "split": asdict(self.split),
+            "strategies": asdict(self.strategies),
+            "portfolio": asdict(self.portfolio),
             "costs": asdict(self.costs),
-            "risk": asdict(self.risk),
-            "strategy": asdict(self.strategy),
-            "optimization": asdict(self.optimization),
+            "optimizer": asdict(self.optimizer),
+            "objective": asdict(self.objective),
             "output": asdict(self.output),
         }
 
     def validate(self):
-        """执行关键字段校验，防止运行期出现低级配置错误。"""
-        if self.engine.mode != "backtest":
-            raise ValueError("当前 trading 模块仅支持 backtest 模式")
-        if self.data.start_time >= self.data.end_time:
-            raise ValueError("data.start_time 必须早于 data.end_time")
-        if len(self.data.symbols) == 0:
-            raise ValueError("data.symbols 不能为空")
-        if self.risk.initial_balance <= 0:
-            raise ValueError("risk.initial_balance 必须大于 0")
-        if self.risk.max_positions <= 0:
-            raise ValueError("risk.max_positions 必须大于 0")
-        if self.risk.max_gross_leverage <= 0:
-            raise ValueError("risk.max_gross_leverage 必须大于 0")
-        if self.risk.risk_per_trade <= 0:
-            raise ValueError("risk.risk_per_trade 必须大于 0")
+        if self.data.timestamp_semantics != "close":
+            raise ValueError("data.timestamp_semantics must be 'close'")
+        if self.data.start >= self.data.end:
+            raise ValueError("data.start must be earlier than data.end")
+        if not self.data.universe:
+            raise ValueError("data.universe cannot be empty")
+        if not self.data.signal_tfs:
+            raise ValueError("data.signal_tfs cannot be empty")
+        if self.data.exec_tf in self.data.signal_tfs:
+            pass
+        if self.portfolio.initial_balance <= 0:
+            raise ValueError("portfolio.initial_balance must be positive")
+        if self.portfolio.max_gross_leverage <= 0:
+            raise ValueError("portfolio.max_gross_leverage must be positive")
+        if not (0 < self.portfolio.max_symbol_weight <= 1):
+            raise ValueError("portfolio.max_symbol_weight must be in (0, 1]")
+        if not (0 <= self.portfolio.dd_soft <= self.portfolio.dd_hard <= 1):
+            raise ValueError("Require 0 <= dd_soft <= dd_hard <= 1")
+        if not (0 < self.portfolio.min_risk_scale <= 1):
+            raise ValueError("portfolio.min_risk_scale must be in (0, 1]")
+        if self.optimizer.population <= 0:
+            raise ValueError("optimizer.population must be positive")
+        if self.optimizer.trials_per_window <= 0:
+            raise ValueError("optimizer.trials_per_window must be positive")
+        if self.optimizer.elite_top_k <= 0:
+            raise ValueError("optimizer.elite_top_k must be positive")
+        if self.optimizer.elite_top_k > self.optimizer.population:
+            raise ValueError("optimizer.elite_top_k cannot exceed optimizer.population")
+        if self.split.step_months <= 0:
+            raise ValueError("split.step_months must be positive")
+        if self.split.train_months <= 0 or self.split.val_months <= 0 or self.split.test_months <= 0:
+            raise ValueError("train/val/test months must be positive")
         if self.costs.fee_rate < 0 or self.costs.slippage_bps < 0:
-            raise ValueError("fee_rate/slippage_bps 不能小于 0")
-        if self.strategy.name != "hybrid_trend_meanrev":
-            raise ValueError("当前仅支持 strategy.name=hybrid_trend_meanrev")
-
-
-def clone_config_with_period(
-    config: TradingConfig,
-    start_time: pd.Timestamp,
-    end_time: pd.Timestamp,
-    strategy_params: Optional[Dict[str, Any]] = None,
-) -> TradingConfig:
-    """基于现有配置创建一个新的时间窗口配置，可选覆盖策略参数。"""
-    new_cfg = TradingConfig.from_dict(copy.deepcopy(config.to_dict()))
-    new_cfg.data.start_time = parse_timestamp(start_time)
-    new_cfg.data.end_time = parse_timestamp(end_time)
-    if strategy_params is not None:
-        new_cfg.strategy.params = dict(strategy_params)
-    return new_cfg
+            raise ValueError("costs fee/slippage must be non-negative")
+        invalid = [x for x in self.strategies.enabled if x not in VALID_STRATEGIES]
+        if invalid:
+            raise ValueError(f"Unsupported strategy IDs: {invalid}")
+        hard_mdd = self.objective.hard_limits.get("max_drawdown", 0.15)
+        if not (0 < hard_mdd <= 1):
+            raise ValueError("objective.hard_limits.max_drawdown must be in (0, 1]")

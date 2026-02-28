@@ -1,0 +1,63 @@
+engine:
+  seed: 11
+  n_jobs: 1
+
+data:
+  root: data
+  universe: [BTC/USDT]
+  exec_tf: 1m
+  signal_tfs: [1h]
+  regime_tfs: [4h]
+  start: "20230101-000000"
+  end: "20230501-000000"
+  warmup_bars: 200
+  timestamp_semantics: close
+
+split:
+  train_months: 1
+  val_months: 1
+  test_months: 1
+  step_months: 1
+  embargo_days: 1
+
+strategies:
+  enabled: [trend_following, mean_reversion]
+  per_strategy_max_positions: 1
+
+portfolio:
+  initial_balance: 10000
+  max_gross_leverage: 1.2
+  max_total_positions: 1
+  max_symbol_weight: 1.0
+  target_vol_annual: 0.15
+  dd_soft: 0.08
+  dd_hard: 0.2
+  min_risk_scale: 0.3
+  risk_per_trade: 0.005
+
+costs:
+  fee_rate: 0.0005
+  slippage_bps: 2.0
+  funding_enabled: true
+
+optimizer:
+  trials_per_window: 2
+  population: 2
+  elite_top_k: 1
+  prior_adoption_prob: 0.5
+  mutation_strength: 0.2
+  crossover_prob: 0.2
+  min_trades_per_window: 1
+
+objective:
+  weights:
+    sharpe: 1.0
+    max_drawdown: 2.0
+    turnover: 0.1
+    overfit_gap: 0.2
+    concentration: 0.2
+  hard_limits:
+    max_drawdown: 0.8
+
+output:
+  dir: results/trading_enterprise
