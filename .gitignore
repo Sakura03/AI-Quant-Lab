@@ -1,12 +1,13 @@
 .conda
 .vscode
+.marscode
 
-data/
+/data/
 
 __pycache__/
 
-build/
+/build/
 *.egg-info
 
-logs/
-results/
+/logs/
+/results/
