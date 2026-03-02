@@ -172,9 +172,10 @@ PYTHONPATH=src python -m trading backtest \
 - `metrics.json`: 本次回测核心指标（Sharpe、MaxDD、年化收益、交易数等）。
 - `strategy_bundle.yml`: 本次回测实际使用的 `signal_tf/regime_tf/strategy_ids/strategy_params`。
 - `resolved_config.yml`: 本次运行实际解析后的完整配置（便于复现实验）。
-- `equity_drawdown.html`: 可交互图表，显示资金曲线与回撤率。
 - `equity_drawdown.png`: 资金曲线与回撤率的静态图（便于快速查看/分享）。
-- `symbol_candles/`: 每个标的一张 HTML K 线图（默认按本次策略 `signal_tf` 聚合显示），叠加黑色圆点交易点，并用箭头标注 `buy/sell`（`candles_<SYMBOL>.html`）。
+- `symbol_performance.csv`: 按币种聚合的交易统计（交易数、胜率、profit factor、总收益、平均持仓时长、费用/滑点等）。
+- `symbol_contributions.html`: 资金曲线增量（`equity-initial_equity`）与各币种 cumulative contribution 的总览图。
+- `symbol_contributions_candles.html`: 二联图。上半部分为 `equity-initial_equity` 与各币种 contribution；下半部分为选中币种 K 线、开平仓点、买卖箭头、连线与每笔 `pnl_pct`，通过按钮切换币种。
 
 ### optimize 目录文件
 - `all_trials.csv`: 全部 trial 记录（每窗口每 trial 的参数与 train/val 指标、得分）。

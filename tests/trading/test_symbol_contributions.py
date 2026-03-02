@@ -145,11 +145,14 @@ def test_write_symbol_contribution_and_candles_html_button_visibility(monkeypatc
     assert [btn.label for btn in buttons] == ["AAA", "BBB"]
 
     names = [trace.name for trace in fig.data]
-    equity_idx = names.index("Equity")
+    equity_idx = names.index("Overall")
     aaa_candle_idx = names.index("AAA candles")
     bbb_candle_idx = names.index("BBB candles")
     assert "Trade Fills" in names
     assert "Entry" not in names and "Exit" not in names
+    equity_trace = fig.data[equity_idx]
+    assert float(equity_trace.y[0]) == 0.0
+    assert float(max(equity_trace.y)) == 5.0
 
     vis_aaa = list(buttons[0].args[0]["visible"])
     vis_bbb = list(buttons[1].args[0]["visible"])
@@ -166,5 +169,5 @@ def test_write_symbol_contribution_and_candles_html_button_visibility(monkeypatc
     ann_toggle_keys = [k for k in layout_aaa if k.startswith("annotations[")]
     assert ann_toggle_keys
 
-    contrib_axis_range = list(fig.layout.yaxis2.range)
+    contrib_axis_range = list(fig.layout.yaxis.range)
     assert contrib_axis_range == [0.0, 5.0]

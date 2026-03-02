@@ -168,7 +168,7 @@ def build_symbol_contribution_frame(trades_df: pd.DataFrame) -> pd.DataFrame:
 def write_symbol_contribution_html(
     equity_df: pd.DataFrame, contributions_df: pd.DataFrame, save_path: str
 ):
-    """Plot stacked contributions per symbol with equity overlay."""
+    """Plot stacked contributions with equity pnl (equity minus initial equity)."""
     if contributions_df.empty:
         return
 
@@ -205,36 +205,29 @@ def write_symbol_contribution_html(
             )
         )
 
+    initial_equity = float(equity["equity"].iloc[0]) if not equity.empty else 0.0
+    max_equity = float(equity["equity"].max()) if not equity.empty else 1.0
+
     if not equity.empty:
+        equity_pnl = equity["equity"] - initial_equity
         fig.add_trace(
             go.Scatter(
                 x=equity["timestamp"],
-                y=equity["equity"],
+                y=equity_pnl,
                 mode="lines",
-                name="Equity",
+                name="Overall",
                 line=dict(color="black", width=2),
-                yaxis="y2",
-                hovertemplate="time=%{x}<br>equity=%{y:.2f}<extra></extra>",
+                hovertemplate="time=%{x}<br>equity_pnl=%{y:.2f} USD<extra></extra>",
             )
         )
 
-    initial_equity = float(equity["equity"].iloc[0]) if not equity.empty else 0.0
-    max_equity = float(equity["equity"].max()) if not equity.empty else 1.0
     fig.update_layout(
         title="Equity Contributions by Symbol",
         template="plotly_white",
         hovermode="x unified",
         yaxis=dict(
-            title="Cumulative Contribution (USD)",
+            title="Cumulative PnL (USD)",
             range=[0.0, max_equity - initial_equity],
-        ),
-        yaxis2=dict(
-            title="Equity",
-            overlaying="y",
-            side="right",
-            showgrid=False,
-            ticks="outside",
-            range=[initial_equity, max_equity],
         ),
         xaxis=dict(title="Time"),
     )
@@ -248,7 +241,7 @@ def write_symbol_contribution_and_candles_html(
     candle_timeframe: str | None,
     save_path: str,
 ):
-    """Render contributions plus synchronized symbol candlestick subplots."""
+    """Render contribution and equity pnl curves plus synchronized symbol candles."""
     contributions_df = build_symbol_contribution_frame(trades_df)
     contribution_symbols = set(contributions_df["symbol"].unique())
     symbols = sorted(
@@ -280,7 +273,6 @@ def write_symbol_contribution_and_candles_html(
         shared_xaxes=True,
         vertical_spacing=0.02,
         row_heights=[0.5, 0.5],
-        specs=[[{"secondary_y": True}], [{"secondary_y": False}]],
     )
 
     timestamps = sorted(
@@ -288,6 +280,8 @@ def write_symbol_contribution_and_candles_html(
         | set(equity["timestamp"].dropna().tolist())
     )
     base_ts = pd.DataFrame({"timestamp": timestamps}) if timestamps else pd.DataFrame({"timestamp": []})
+    initial_equity = float(equity["equity"].iloc[0]) if not equity.empty else 0.0
+    max_equity = float(equity["equity"].max()) if not equity.empty else 1.0
 
     contrib_indices: list[int] = []
     for symbol in symbols:
@@ -302,43 +296,31 @@ def write_symbol_contribution_and_candles_html(
             legendgroup=symbol,
             hovertemplate="time=%{x}<br>contribution=%{y:.2f} USD<extra></extra>",
         )
-        fig.add_trace(trace, row=1, col=1, secondary_y=True)
+        fig.add_trace(trace, row=1, col=1)
         contrib_indices.append(len(fig.data) - 1)
 
     equity_idx: int | None = None
     if not equity.empty:
+        equity_pnl = equity["equity"] - initial_equity
         fig.add_trace(
             go.Scatter(
                 x=equity["timestamp"],
-                y=equity["equity"],
+                y=equity_pnl,
                 mode="lines",
-                name="Equity",
+                name="Overall",
                 line=dict(color="black", width=2),
-                hovertemplate="time=%{x}<br>equity=%{y:.2f}<extra></extra>",
+                hovertemplate="time=%{x}<br>equity_pnl=%{y:.2f} USD<extra></extra>",
             ),
             row=1,
             col=1,
-            secondary_y=False,
         )
         equity_idx = len(fig.data) - 1
 
-    initial_equity = float(equity["equity"].iloc[0]) if not equity.empty else 0.0
-    max_equity = float(equity["equity"].max()) if not equity.empty else 1.0
     fig.update_yaxes(
-        title_text="Equity",
+        title_text="Cumulative PnL (USD)",
         row=1,
         col=1,
-        secondary_y=False,
-        range=[initial_equity, max_equity],
-    )
-    fig.update_yaxes(
-        title_text="Contribution (USD)",
-        row=1,
-        col=1,
-        secondary_y=True,
         range=[0.0, max_equity - initial_equity],
-        showgrid=False,
-        ticks="outside",
     )
 
     symbol_trace_indices: dict[str, list[int]] = {}

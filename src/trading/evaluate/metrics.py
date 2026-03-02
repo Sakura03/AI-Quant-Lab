@@ -45,7 +45,8 @@ def compute_metrics(equity_df: pd.DataFrame, trades_df: pd.DataFrame, execution_
         if std_ret > 0:
             sharpe = float(math.sqrt(periods_per_year) * mean_ret / std_ret)
 
-        downside = rets[rets < 0]
+        # Downside deviation for Sortino should include non-negative returns as zero.
+        downside = rets.clip(upper=0.0)
         downside_std = float(downside.std(ddof=0)) if len(downside) else 0.0
         if downside_std > 0:
             sortino = float(math.sqrt(periods_per_year) * mean_ret / downside_std)
