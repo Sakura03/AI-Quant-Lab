@@ -13,9 +13,10 @@ from trading.config import TradingConfig
 from trading.domain.types import BacktestResult, ExperimentResult
 from trading.evaluate.regime_eval import regime_breakdown
 from trading.report.visualization import (
-    write_equity_drawdown_html,
+    build_symbol_contribution_frame,
     write_equity_drawdown_png,
-    write_symbol_candles_with_trades_html,
+    write_symbol_contribution_and_candles_html,
+    write_symbol_contribution_html,
 )
 
 
@@ -117,17 +118,19 @@ def write_backtest_report(result: BacktestResult, config: TradingConfig, out_dir
     with open(osp.join(out_dir, "resolved_config.yml"), "w", encoding="utf-8") as f:
         yaml.safe_dump(config.to_dict(), f, allow_unicode=True, sort_keys=False)
 
-    write_equity_drawdown_html(result.equity_curve, osp.join(out_dir, "equity_drawdown.html"))
     write_equity_drawdown_png(result.equity_curve, osp.join(out_dir, "equity_drawdown.png"))
     candle_tf = str(result.strategy_bundle.get("signal_tf", config.data.exec_tf))
-    write_symbol_candles_with_trades_html(
-        result.symbol_execution,
-        result.trades,
-        osp.join(out_dir, "symbol_candles"),
-        candle_timeframe=candle_tf,
-    )
     symbol_perf = _symbol_performance_summary(result.trades)
     symbol_perf.to_csv(osp.join(out_dir, "symbol_performance.csv"), index=False)
+    contributions = build_symbol_contribution_frame(result.trades)
+    write_symbol_contribution_html(result.equity_curve, contributions, osp.join(out_dir, "symbol_contributions.html"))
+    write_symbol_contribution_and_candles_html(
+        result.equity_curve,
+        result.symbol_execution,
+        result.trades,
+        candle_tf,
+        osp.join(out_dir, "symbol_contributions_candles.html"),
+    )
 
 
 def write_optimizer_report(exp: ExperimentResult, config: TradingConfig, out_dir: str):
