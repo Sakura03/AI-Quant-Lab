@@ -14,6 +14,7 @@ from trading.report.writer import build_run_dir, write_backtest_report, write_op
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse trading CLI arguments."""
     parser = argparse.ArgumentParser(description="Enterprise multi-strategy crypto trading framework")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -35,6 +36,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def _config_with_optional_range(cfg: TradingConfig, start: str | None, end: str | None) -> TradingConfig:
+    """Clone config and optionally override data start/end."""
     if not start and not end:
         return cfg
     raw = copy.deepcopy(cfg.to_dict())
@@ -46,6 +48,7 @@ def _config_with_optional_range(cfg: TradingConfig, start: str | None, end: str 
 
 
 def _load_genome(path: str) -> dict:
+    """Load optimizer genome file and validate required keys."""
     if not osp.isfile(path):
         raise FileNotFoundError(f"Genome file not found: {path}")
     with open(path, "r", encoding="utf-8") as f:
@@ -58,6 +61,7 @@ def _load_genome(path: str) -> dict:
 
 
 def _make_monitor(enabled: bool):
+    """Build a timestamped progress logger callback."""
     if not enabled:
         return None
 
@@ -69,6 +73,7 @@ def _make_monitor(enabled: bool):
 
 
 def run_backtest(args: argparse.Namespace):
+    """CLI handler for single backtest mode."""
     monitor = _make_monitor(not args.quiet)
     if monitor is not None:
         monitor("Loading backtest config")
@@ -127,6 +132,7 @@ def run_backtest(args: argparse.Namespace):
 
 
 def run_optimize(args: argparse.Namespace):
+    """CLI handler for walk-forward optimization mode."""
     monitor = _make_monitor(not args.quiet)
     if monitor is not None:
         monitor("Loading optimize config")
@@ -150,6 +156,7 @@ def run_optimize(args: argparse.Namespace):
 
 
 def main():
+    """CLI entrypoint dispatcher."""
     args = parse_args()
     if args.command == "backtest":
         run_backtest(args)

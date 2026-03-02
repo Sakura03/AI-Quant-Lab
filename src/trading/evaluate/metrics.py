@@ -10,6 +10,7 @@ from trading.domain.types import Metrics
 
 
 def max_drawdown_from_equity(equity: pd.Series) -> float:
+    """Compute max drawdown from equity curve."""
     if equity.empty:
         return 0.0
     running_max = equity.cummax()
@@ -18,6 +19,7 @@ def max_drawdown_from_equity(equity: pd.Series) -> float:
 
 
 def compute_metrics(equity_df: pd.DataFrame, trades_df: pd.DataFrame, execution_timeframe: str) -> Metrics:
+    """Compute return/risk/trade metrics from equity and trade history."""
     if equity_df.empty:
         return Metrics()
 
@@ -91,6 +93,7 @@ def score_metrics(
     hard_limits: dict[str, float],
     min_trades: int,
 ) -> float:
+    """Score one evaluation result under objective weights and hard constraints."""
     mdd_limit = float(hard_limits.get("max_drawdown", 0.15))
     if eval_metrics.max_drawdown > mdd_limit:
         return -1e9

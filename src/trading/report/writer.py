@@ -19,7 +19,69 @@ from trading.report.visualization import (
 )
 
 
+def _symbol_performance_summary(trades_df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate per-symbol trade metrics for report export.
+
+    Returns a consistent schema even when no trades exist.
+    """
+    columns = [
+        "symbol",
+        "trade_count",
+        "win_rate",
+        "profit_factor",
+        "total_pnl_usd",
+        "avg_pnl_pct",
+        "avg_win_pct",
+        "avg_loss_pct",
+        "avg_holding_minutes",
+        "total_fees",
+        "avg_slippage_cost",
+    ]
+    if trades_df.empty:
+        return pd.DataFrame(columns=columns)
+
+    records: list[dict[str, float | int | str]] = []
+    for symbol, group in trades_df.groupby("symbol", sort=True):
+        pnl_usd = group["pnl_usd"].astype(float)
+        pnl_pct = group["pnl_pct"].astype(float)
+        holding = group["holding_minutes"].astype(float)
+        fees = group["fees"].astype(float)
+        slippage = group["slippage_cost"].astype(float)
+
+        wins = pnl_usd[pnl_usd > 0.0]
+        losses = pnl_usd[pnl_usd < 0.0]
+        win_rate = float(len(wins) / len(pnl_usd)) if len(pnl_usd) else 0.0
+        win_total = wins.sum()
+        loss_total = -losses.sum()
+        if loss_total <= 0.0:
+            profit_factor = float("inf") if win_total > 0 else 0.0
+        else:
+            profit_factor = win_total / loss_total
+
+        wins_pct = pnl_pct[pnl_pct > 0.0]
+        losses_pct = pnl_pct[pnl_pct < 0.0]
+
+        records.append(
+            {
+                "symbol": symbol,
+                "trade_count": len(pnl_usd),
+                "win_rate": win_rate,
+                "profit_factor": profit_factor,
+                "total_pnl_usd": float(pnl_usd.sum()),
+                "avg_pnl_pct": float(pnl_pct.mean()),
+                "avg_win_pct": float(wins_pct.mean()) if len(wins_pct) else 0.0,
+                "avg_loss_pct": float(losses_pct.mean()) if len(losses_pct) else 0.0,
+                "avg_holding_minutes": float(holding.mean()),
+                "total_fees": float(fees.sum()),
+                "avg_slippage_cost": float(slippage.mean()),
+            }
+        )
+
+    return pd.DataFrame.from_records(records, columns=columns)
+
+
 def build_run_dir(base_dir: str, prefix: str) -> str:
+    """Create timestamped output directory for one run."""
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     folder = osp.join(base_dir, f"{prefix}_{run_id}")
     os.makedirs(folder, exist_ok=True)
@@ -27,6 +89,7 @@ def build_run_dir(base_dir: str, prefix: str) -> str:
 
 
 def _to_builtin(obj):
+    """Recursively convert numpy/pandas scalar-like values to builtin Python types."""
     if isinstance(obj, dict):
         return {str(k): _to_builtin(v) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -39,6 +102,7 @@ def _to_builtin(obj):
 
 
 def write_backtest_report(result: BacktestResult, config: TradingConfig, out_dir: str):
+    """Persist backtest metrics/artifacts and render plots."""
     os.makedirs(out_dir, exist_ok=True)
 
     result.equity_curve.to_csv(osp.join(out_dir, "equity_curve.csv"), index=False)
@@ -62,9 +126,12 @@ def write_backtest_report(result: BacktestResult, config: TradingConfig, out_dir
         osp.join(out_dir, "symbol_candles"),
         candle_timeframe=candle_tf,
     )
+    symbol_perf = _symbol_performance_summary(result.trades)
+    symbol_perf.to_csv(osp.join(out_dir, "symbol_performance.csv"), index=False)
 
 
 def write_optimizer_report(exp: ExperimentResult, config: TradingConfig, out_dir: str):
+    """Persist optimization artifacts, stitched OOS reports, and diagnostics."""
     os.makedirs(out_dir, exist_ok=True)
 
     if not exp.all_trials.empty:

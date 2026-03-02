@@ -10,18 +10,23 @@ from trading.strategies.base import BaseStrategy, StrategyDecision
 
 
 def _clip_int(v: float, lo: int, hi: int) -> int:
+    """Clamp and round to bounded integer."""
     return int(max(lo, min(hi, round(v))))
 
 
 def _clip_float(v: float, lo: float, hi: float) -> float:
+    """Clamp to bounded float."""
     return float(max(lo, min(hi, v)))
 
 
 class TrendFollowingStrategy(BaseStrategy):
+    """Trend-following strategy driven by EMA/MACD/ADX confirmation."""
+
     strategy_id = "trend_following"
 
     @classmethod
     def default_params(cls) -> dict[str, Any]:
+        """Return default hyper-parameters."""
         return {
             "ema_fast": 20,
             "ema_slow": 55,
@@ -37,6 +42,7 @@ class TrendFollowingStrategy(BaseStrategy):
 
     @classmethod
     def sample_params(cls, rng: np.random.Generator) -> dict[str, Any]:
+        """Sample one random parameter set for optimizer initialization."""
         ema_fast = int(rng.integers(8, 31))
         ema_slow = int(rng.integers(max(ema_fast + 8, 30), 130))
         macd_fast = int(rng.integers(8, 18))
@@ -56,6 +62,7 @@ class TrendFollowingStrategy(BaseStrategy):
 
     @classmethod
     def mutate_params(cls, params: dict[str, Any], strength: float, rng: np.random.Generator) -> dict[str, Any]:
+        """Mutate parameters with bounded gaussian noise."""
         out = dict(params)
         s = max(0.01, float(strength))
         out["ema_fast"] = _clip_int(out["ema_fast"] + rng.normal(0, 5 * s), 5, 40)
@@ -71,6 +78,7 @@ class TrendFollowingStrategy(BaseStrategy):
         return out
 
     def decide(self, row: pd.Series, position_side: int) -> StrategyDecision:
+        """Generate entry/exit/hold action from current feature snapshot."""
         required = [
             "ema_fast",
             "ema_slow",

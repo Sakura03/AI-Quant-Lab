@@ -7,6 +7,8 @@ import pandas as pd
 
 @dataclass
 class WalkForwardWindow:
+    """One walk-forward split window with train/val/test boundaries."""
+
     window_id: int
     train_start: pd.Timestamp
     train_end: pd.Timestamp
@@ -17,6 +19,7 @@ class WalkForwardWindow:
 
 
 def add_months(ts: pd.Timestamp, months: int) -> pd.Timestamp:
+    """Shift timestamp forward by N calendar months."""
     return ts + pd.DateOffset(months=months)
 
 
@@ -29,6 +32,7 @@ def make_walk_forward_windows(
     step_months: int,
     embargo_days: int,
 ) -> list[WalkForwardWindow]:
+    """Generate sequential walk-forward windows with optional embargo gaps."""
     windows: list[WalkForwardWindow] = []
     cursor = pd.Timestamp(start)
     embargo = pd.Timedelta(days=max(0, embargo_days))

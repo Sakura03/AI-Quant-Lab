@@ -70,6 +70,7 @@ class Trade:
     funding_pnl: float
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize trade with stable timestamp strings for CSV/JSON."""
         data = asdict(self)
         data["entry_time"] = self.entry_time.strftime("%Y-%m-%d %H:%M:%S")
         data["signal_time"] = self.signal_time.strftime("%Y-%m-%d %H:%M:%S")
@@ -79,6 +80,8 @@ class Trade:
 
 @dataclass
 class Metrics:
+    """Aggregate performance metrics for one backtest segment."""
+
     annual_return: float = 0.0
     sharpe: float = 0.0
     sortino: float = 0.0
@@ -92,11 +95,14 @@ class Metrics:
     trade_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize metrics to plain dict."""
         return asdict(self)
 
 
 @dataclass
 class BacktestResult:
+    """Output payload returned by one backtest run."""
+
     metrics: Metrics
     equity_curve: pd.DataFrame
     trades: pd.DataFrame
@@ -106,6 +112,8 @@ class BacktestResult:
 
 @dataclass
 class WindowResult:
+    """Per-window optimization summary across train/val/test."""
+
     window_id: int
     train_start: pd.Timestamp
     train_end: pd.Timestamp
@@ -122,6 +130,7 @@ class WindowResult:
     test_score: float
 
     def to_dict(self) -> dict[str, Any]:
+        """Flatten a window result into tabular-friendly dict fields."""
         return {
             "window_id": self.window_id,
             "train_start": self.train_start.strftime("%Y-%m-%d"),
@@ -141,6 +150,8 @@ class WindowResult:
 
 @dataclass
 class ExperimentResult:
+    """Full optimization output including stitched OOS artifacts."""
+
     best_genome: dict[str, Any]
     stitched_test_metrics: dict[str, Any]
     window_results: list[WindowResult]

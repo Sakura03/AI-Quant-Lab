@@ -20,6 +20,8 @@ from trading.strategies.factory import build_strategy
 
 @dataclass
 class ScheduledOrder:
+    """Deferred order object to be executed at a future execution bar."""
+
     kind: str  # open / close
     symbol: str
     execution_close_time: pd.Timestamp
@@ -34,6 +36,8 @@ class ScheduledOrder:
 
 
 class BacktestEngine:
+    """Event-driven multi-symbol backtest engine."""
+
     def __init__(
         self,
         config: TradingConfig,
@@ -47,6 +51,7 @@ class BacktestEngine:
         progress_name: str = "backtest",
         progress_updates: int = 20,
     ):
+        """Initialize engine state, strategies, data bundles, and feature caches."""
         self.cfg = config
         self.signal_tf = signal_tf
         self.regime_tf = regime_tf
@@ -91,10 +96,12 @@ class BacktestEngine:
         self._prepare_frames()
 
     def _progress(self, message: str):
+        """Emit progress message via optional callback."""
         if self.progress_cb is not None:
             self.progress_cb(message)
 
     def _prepare_frames(self):
+        """Prepare execution/funding/feature frames indexed by close_time."""
         start = self.cfg.data.start
         end = self.cfg.data.end
 
@@ -122,6 +129,7 @@ class BacktestEngine:
                 self.feature_indexed[sid][symbol] = features.set_index("close_time")
 
     def _build_timeline(self, start: pd.Timestamp, end: pd.Timestamp) -> list[pd.Timestamp]:
+        """Build union timeline of all symbols' execution close timestamps."""
         all_ts = []
         for _, frame in self.exec_frames.items():
             part = frame[(frame["close_time"] >= start) & (frame["close_time"] <= end)]
@@ -131,6 +139,7 @@ class BacktestEngine:
         return pd.concat(all_ts).drop_duplicates().sort_values().tolist()
 
     def _next_exec_close_time(self, symbol: str, signal_time: pd.Timestamp) -> pd.Timestamp | None:
+        """Find first executable bar close after a signal bar closes."""
         # timestamp semantics: signal time is signal bar close_time.
         # first fill is earliest execution bar where open_time >= signal_time.
         open_arr = self.exec_open_times[symbol]
@@ -140,6 +149,7 @@ class BacktestEngine:
         return pd.Timestamp(self.exec_close_times[symbol][idx])
 
     def _aggregate_decisions(self, symbol: str, ts: pd.Timestamp, current_side: int) -> tuple[int, StrategyDecision | None, str]:
+        """Aggregate multi-strategy decisions into one target side for a symbol."""
         decisions: list[tuple[str, StrategyDecision]] = []
         for sid in self.strategy_ids:
             indexed = self.feature_indexed[sid].get(symbol)
@@ -181,11 +191,12 @@ class BacktestEngine:
         ledger: PortfolioLedger,
         mark_prices: dict[str, float],
     ) -> ScheduledOrder | None:
+        """Construct one open order with risk sizing and stop/take levels."""
         exec_idx = self.exec_indexed[symbol]
         if next_exec_close_time not in exec_idx.index:
             return None
 
-        # Position sizing must only use information known at signal close.
+        # 1) Build a conservative fill estimate from signal-time-known prices only.
         signal_mark = float(mark_prices.get(symbol, np.nan))
         if not np.isfinite(signal_mark) or signal_mark <= 0:
             if signal_time in exec_idx.index:
@@ -198,6 +209,7 @@ class BacktestEngine:
 
         est_fill = self.execution.apply_slippage(signal_mark, side_to_open_order(target_side))
 
+        # 2) Convert decision ATR multipliers into absolute stop/take distances.
         atr_value = float(feature_row.get("atr", np.nan))
         if not np.isfinite(atr_value) or atr_value <= 0:
             return None
@@ -205,6 +217,7 @@ class BacktestEngine:
         stop_dist = max(1e-9, decision.stop_atr * atr_value)
         take_dist = max(1e-9, decision.take_atr * atr_value)
 
+        # 3) Compute dynamic risk budget under drawdown-aware risk scaling.
         equity = ledger.mark_to_market(mark_prices)
         drawdown = ledger.current_drawdown(mark_prices)
         risk_scale = drawdown_risk_scale(
@@ -219,6 +232,7 @@ class BacktestEngine:
         if risk_per_unit <= 0:
             return None
 
+        # 4) Translate risk budget into notional, then clamp by portfolio limits.
         notional_risk = risk_budget / risk_per_unit
         gross = ledger.gross_notional(mark_prices)
         symbol_now = ledger.symbol_notional(symbol, mark_prices)
@@ -233,8 +247,10 @@ class BacktestEngine:
         if notional <= 10.0:
             return None
 
+        # 5) Finalize order quantity/leverage and absolute stop/take prices.
         qty = notional / est_fill
         leverage = max(1.0, notional / max(equity, 1e-9))
+        # TODO: qty, leverage 都必须是整数
 
         if target_side == LONG:
             stop_price = est_fill - stop_dist
@@ -262,6 +278,7 @@ class BacktestEngine:
 
     @staticmethod
     def _enqueue(queue: dict[pd.Timestamp, list[ScheduledOrder]], order: ScheduledOrder):
+        """Append one scheduled order into execution queue keyed by close_time."""
         queue.setdefault(order.execution_close_time, []).append(order)
 
     def _execute_due_orders(
@@ -271,10 +288,12 @@ class BacktestEngine:
         ledger: PortfolioLedger,
         mark_prices: dict[str, float],
     ):
+        """Execute all orders scheduled for current timestamp."""
         due = queue.pop(ts, [])
         if not due:
             return
 
+        # Always process closes before opens to avoid accidental over-exposure.
         due.sort(key=lambda x: 0 if x.kind == "close" else 1)
 
         for order in due:
@@ -284,18 +303,21 @@ class BacktestEngine:
 
             bar = exec_df.loc[ts]
             raw_open = float(bar["open"])
+            exec_open_time = pd.Timestamp(bar["open_time"])
 
             if order.kind == "close":
+                # Close uses current bar open as execution reference.
                 pos = ledger.positions.get(order.symbol)
                 if pos is None:
                     continue
                 fill = self.execution.apply_slippage(raw_open, side_to_close_order(pos.side))
-                ledger.close_position(order.symbol, ts, fill, raw_open, order.reason)
+                ledger.close_position(order.symbol, exec_open_time, fill, raw_open, order.reason)
                 continue
 
             if order.symbol in ledger.positions:
                 continue
 
+            # Re-check hard risk limits at execution time.
             equity = ledger.mark_to_market(mark_prices)
             gross = ledger.gross_notional(mark_prices)
             symbol_notional = ledger.symbol_notional(order.symbol, mark_prices)
@@ -312,7 +334,7 @@ class BacktestEngine:
             ledger.open_position(
                 symbol=order.symbol,
                 side=order.side,
-                timestamp=ts,
+                timestamp=exec_open_time,
                 signal_time=order.signal_time,
                 strategy=order.strategy,
                 entry_reason=order.reason,
@@ -325,6 +347,7 @@ class BacktestEngine:
             )
 
     def _apply_funding(self, ts: pd.Timestamp, ledger: PortfolioLedger, mark_prices: dict[str, float]):
+        """Apply funding cashflows at timestamps where funding data exists."""
         if not self.cfg.costs.funding_enabled:
             return
         for symbol, pos in list(ledger.positions.items()):
@@ -335,6 +358,7 @@ class BacktestEngine:
             ledger.apply_funding(symbol, float(funding.loc[ts]), mark)
 
     def _check_stop_take(self, ts: pd.Timestamp, ledger: PortfolioLedger):
+        """Evaluate stop-loss/take-profit hits using current execution bar range."""
         for symbol in list(ledger.positions.keys()):
             pos = ledger.positions.get(symbol)
             if pos is None:
@@ -344,6 +368,7 @@ class BacktestEngine:
                 continue
 
             bar = exec_df.loc[ts]
+            exec_open_time = pd.Timestamp(bar["open_time"])
             high = float(bar["high"])
             low = float(bar["low"])
 
@@ -373,9 +398,10 @@ class BacktestEngine:
                 continue
 
             fill = self.execution.apply_slippage(float(hit_price), side_to_close_order(pos.side))
-            ledger.close_position(symbol, ts, fill, float(hit_price), reason)
+            ledger.close_position(symbol, exec_open_time, fill, float(hit_price), reason)
 
     def _max_hold_limit(self) -> int:
+        """Use the strictest max_hold among enabled strategies."""
         vals = []
         for sid in self.strategy_ids:
             vals.append(int(self.strategies[sid].params.get("max_hold", 120)))
@@ -388,9 +414,11 @@ class BacktestEngine:
         ledger: PortfolioLedger,
         mark_prices: dict[str, float],
     ):
+        """Generate and enqueue close/open orders from strategy decisions."""
         if ts < self.cfg.data.start:
             return
 
+        # 1) Iterate symbols, skip those without execution/signal data at ts.
         max_hold = self._max_hold_limit()
 
         for symbol in self.cfg.data.universe:
@@ -401,6 +429,7 @@ class BacktestEngine:
             if not has_signal_point:
                 continue
 
+            # 2) Update holding age and aggregate all strategy opinions.
             if symbol in ledger.positions:
                 ledger.increment_holding_bar(symbol)
 
@@ -411,6 +440,7 @@ class BacktestEngine:
             if chosen_decision is None:
                 continue
 
+            # 3) Force flat when max holding horizon is reached.
             if position is not None and position.holding_bars >= max_hold:
                 target_side = FLAT
                 chosen_decision = StrategyDecision(
@@ -428,6 +458,7 @@ class BacktestEngine:
 
             feature_row = self.feature_indexed[source_sid][symbol].loc[ts]
 
+            # 4) Flat -> non-flat: schedule open only.
             if position is None:
                 if target_side == FLAT:
                     continue
@@ -446,6 +477,7 @@ class BacktestEngine:
                     self._enqueue(queue, open_order)
                 continue
 
+            # 5) Same side: hold. Side change: close then optional flip-open.
             if target_side == position.side:
                 continue
 
@@ -480,6 +512,7 @@ class BacktestEngine:
                 self._enqueue(queue, open_order)
 
     def run(self) -> BacktestResult:
+        """Run the full event loop and return backtest artifacts."""
         start = self.cfg.data.start
         end = self.cfg.data.end
 
@@ -499,18 +532,22 @@ class BacktestEngine:
         mark_prices: dict[str, float] = {}
 
         for idx, ts in enumerate(timeline, start=1):
+            # 1) Execute queued orders with pre-bar marks (no current-close lookahead).
             # Use previous known marks for executions that happen at current bar open.
             # This avoids using current bar close in open-time risk checks.
             marks_before_bar = dict(mark_prices)
             self._execute_due_orders(ts, queue, ledger, marks_before_bar)
 
+            # 2) Apply intrabar stop/take checks against current bar high/low.
             self._check_stop_take(ts, ledger)
 
+            # 3) Move mark prices to current bar close after intrabar actions.
             # After intrabar execution/stop checks, move marks to current bar close.
             for symbol, exec_idx in self.exec_indexed.items():
                 if ts in exec_idx.index:
                     mark_prices[symbol] = float(exec_idx.loc[ts, "close"])
 
+            # 4) Apply funding, generate new signals, then snapshot equity.
             self._apply_funding(ts, ledger, mark_prices)
             self._generate_signals(ts, queue, ledger, mark_prices)
             ledger.snapshot(ts, mark_prices)
@@ -522,6 +559,7 @@ class BacktestEngine:
                     f"ts={ts} open_positions={len(ledger.positions)}"
                 )
 
+        # 5) Force-close any remaining positions at final bar close.
         final_ts = timeline[-1]
         for symbol in list(ledger.positions.keys()):
             exec_idx = self.exec_indexed[symbol]
@@ -532,6 +570,7 @@ class BacktestEngine:
             fill = self.execution.apply_slippage(raw_close, side_to_close_order(pos.side))
             ledger.close_position(symbol, final_ts, fill, raw_close, "final_close")
 
+        # 6) Build output tables/metrics and package result payload.
         ledger.snapshot(final_ts, mark_prices)
 
         equity_df = ledger.equity_frame()

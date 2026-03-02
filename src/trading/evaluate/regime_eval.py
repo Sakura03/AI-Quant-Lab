@@ -6,6 +6,7 @@ from trading.evaluate.metrics import compute_metrics
 
 
 def infer_regime_labels(equity_df: pd.DataFrame) -> pd.Series:
+    """Label each equity row into bull/bear/sideways using rolling 1-day return."""
     if equity_df.empty:
         return pd.Series(dtype=object)
     out = equity_df[["timestamp", "equity"]].copy()
@@ -23,6 +24,7 @@ def infer_regime_labels(equity_df: pd.DataFrame) -> pd.Series:
 
 
 def regime_breakdown(equity_df: pd.DataFrame, trades_df: pd.DataFrame, exec_tf: str) -> pd.DataFrame:
+    """Compute per-regime performance metrics over stitched OOS equity."""
     if equity_df.empty:
         return pd.DataFrame(columns=["regime", "sharpe", "max_drawdown", "annual_return", "trade_count"])
 

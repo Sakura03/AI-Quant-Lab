@@ -14,6 +14,8 @@ from trading.data.catalog import symbol_to_filename, timeframe_to_timedelta
 
 @dataclass
 class SymbolDataBundle:
+    """All market frames required for one symbol."""
+
     signal: pd.DataFrame
     regime: pd.DataFrame
     execution: pd.DataFrame
@@ -24,11 +26,13 @@ class MarketDataLoader:
     """Loads and caches raw symbol/timeframe bars with close-time semantics."""
 
     def __init__(self, data_cfg: DataConfig):
+        """Initialize loader caches bound to one DataConfig."""
         self.cfg = data_cfg
         self._cache: dict[tuple[str, str], pd.DataFrame] = {}
         self._funding_cache: dict[str, pd.DataFrame] = {}
 
     def _read_feather(self, path: str) -> pd.DataFrame:
+        """Read one feather file and normalize close_time ordering/dedup."""
         if not osp.isfile(path):
             raise FileNotFoundError(f"Missing market data file: {path}")
         df = pd.read_feather(path)
@@ -47,6 +51,7 @@ class MarketDataLoader:
         return out
 
     def _get_full_bars(self, symbol: str, timeframe: str) -> pd.DataFrame:
+        """Fetch full OHLCV bars for one symbol/timeframe (cached)."""
         key = (symbol, timeframe)
         if key in self._cache:
             return self._cache[key]
@@ -60,6 +65,7 @@ class MarketDataLoader:
         return bars
 
     def _get_full_funding(self, symbol: str) -> pd.DataFrame:
+        """Fetch full funding-rate frame for one symbol (cached)."""
         if symbol in self._funding_cache:
             return self._funding_cache[symbol]
         base = symbol_to_filename(symbol)
@@ -77,6 +83,7 @@ class MarketDataLoader:
         end: pd.Timestamp,
         warmup_bars: int,
     ) -> pd.DataFrame:
+        """Slice bars into [start, end] plus a tail warmup window before start."""
         capped = bars[bars["close_time"] <= end].copy()
         anchor = capped[capped["close_time"] < start]
         warmup = anchor.tail(max(0, warmup_bars))
@@ -93,15 +100,18 @@ class MarketDataLoader:
         end: pd.Timestamp,
         warmup_bars: int,
     ) -> pd.DataFrame:
+        """Return sliced bars for one symbol/timeframe with warmup."""
         full = self._get_full_bars(symbol, timeframe)
         return self._slice_with_warmup(full, start, end, warmup_bars)
 
     def get_execution_bars(self, symbol: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+        """Return execution timeframe bars in [start, end]."""
         bars = self._get_full_bars(symbol, self.cfg.exec_tf)
         out = bars[(bars["close_time"] >= start) & (bars["close_time"] <= end)].copy()
         return out.reset_index(drop=True)
 
     def get_funding(self, symbol: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+        """Return funding rows in [start, end]."""
         fdf = self._get_full_funding(symbol)
         out = fdf[(fdf["close_time"] >= start) & (fdf["close_time"] <= end)].copy()
         return out.reset_index(drop=True)
@@ -115,6 +125,7 @@ class MarketDataLoader:
         end: pd.Timestamp,
         warmup_bars: int,
     ) -> SymbolDataBundle:
+        """Build signal/regime/execution/funding frames for one symbol."""
         signal_df = self.get_bars(symbol, signal_tf, start, end, warmup_bars)
         if regime_tf is None:
             regime_df = signal_df.copy()
@@ -143,6 +154,7 @@ def load_market_bundles(
     warmup_bars: int,
     loader: MarketDataLoader | None = None,
 ) -> Dict[str, SymbolDataBundle]:
+    """Build symbol bundles for the configured universe, skipping empty symbols."""
     data_loader = loader if loader is not None else MarketDataLoader(data_cfg)
     out: Dict[str, SymbolDataBundle] = {}
     skipped: list[str] = []

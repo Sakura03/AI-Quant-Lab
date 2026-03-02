@@ -10,18 +10,23 @@ from trading.strategies.base import BaseStrategy, StrategyDecision
 
 
 def _clip_int(v: float, lo: int, hi: int) -> int:
+    """Clamp and round to bounded integer."""
     return int(max(lo, min(hi, round(v))))
 
 
 def _clip_float(v: float, lo: float, hi: float) -> float:
+    """Clamp to bounded float."""
     return float(max(lo, min(hi, v)))
 
 
 class HybridRegimeSwitchStrategy(BaseStrategy):
+    """Hybrid strategy switching between trend and mean-reversion regimes."""
+
     strategy_id = "hybrid_regime_switch"
 
     @classmethod
     def default_params(cls) -> dict[str, Any]:
+        """Return default hyper-parameters."""
         return {
             "regime_adx_th": 24.0,
             "dip_th": 0.04,
@@ -35,6 +40,7 @@ class HybridRegimeSwitchStrategy(BaseStrategy):
 
     @classmethod
     def sample_params(cls, rng: np.random.Generator) -> dict[str, Any]:
+        """Sample one random parameter set for optimizer initialization."""
         return {
             "regime_adx_th": float(rng.uniform(16.0, 38.0)),
             "dip_th": float(rng.uniform(0.01, 0.10)),
@@ -48,6 +54,7 @@ class HybridRegimeSwitchStrategy(BaseStrategy):
 
     @classmethod
     def mutate_params(cls, params: dict[str, Any], strength: float, rng: np.random.Generator) -> dict[str, Any]:
+        """Mutate parameters with bounded gaussian noise."""
         s = max(0.01, float(strength))
         out = dict(params)
         out["regime_adx_th"] = _clip_float(out["regime_adx_th"] + rng.normal(0, 4 * s), 10.0, 50.0)
@@ -61,6 +68,7 @@ class HybridRegimeSwitchStrategy(BaseStrategy):
         return out
 
     def decide(self, row: pd.Series, position_side: int) -> StrategyDecision:
+        """Generate entry/exit/hold action from current feature snapshot."""
         required = [
             "ema_fast",
             "ema_slow",

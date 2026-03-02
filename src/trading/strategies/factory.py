@@ -20,6 +20,7 @@ STRATEGY_REGISTRY: dict[str, Type[BaseStrategy]] = {
 
 
 def build_strategy(strategy_id: str, params: dict) -> BaseStrategy:
+    """Instantiate one strategy with defaults overlaid by provided params."""
     cls = STRATEGY_REGISTRY.get(strategy_id)
     if cls is None:
         raise ValueError(f"Unknown strategy_id: {strategy_id}")
@@ -29,6 +30,7 @@ def build_strategy(strategy_id: str, params: dict) -> BaseStrategy:
 
 
 def sample_strategy_params(strategy_id: str, rng: np.random.Generator) -> dict:
+    """Sample one random parameter set for the selected strategy."""
     cls = STRATEGY_REGISTRY.get(strategy_id)
     if cls is None:
         raise ValueError(f"Unknown strategy_id: {strategy_id}")
@@ -36,6 +38,7 @@ def sample_strategy_params(strategy_id: str, rng: np.random.Generator) -> dict:
 
 
 def mutate_strategy_params(strategy_id: str, params: dict, strength: float, rng: np.random.Generator) -> dict:
+    """Mutate strategy parameters while enforcing each strategy's bounds."""
     cls = STRATEGY_REGISTRY.get(strategy_id)
     if cls is None:
         raise ValueError(f"Unknown strategy_id: {strategy_id}")

@@ -10,18 +10,23 @@ from trading.strategies.base import BaseStrategy, StrategyDecision
 
 
 def _clip_int(v: float, lo: int, hi: int) -> int:
+    """Clamp and round to bounded integer."""
     return int(max(lo, min(hi, round(v))))
 
 
 def _clip_float(v: float, lo: float, hi: float) -> float:
+    """Clamp to bounded float."""
     return float(max(lo, min(hi, v)))
 
 
 class MeanReversionStrategy(BaseStrategy):
+    """Mean-reversion strategy around z-score/RSI extremes."""
+
     strategy_id = "mean_reversion"
 
     @classmethod
     def default_params(cls) -> dict[str, Any]:
+        """Return default hyper-parameters."""
         return {
             "bb_period": 20,
             "bb_std": 2.1,
@@ -35,6 +40,7 @@ class MeanReversionStrategy(BaseStrategy):
 
     @classmethod
     def sample_params(cls, rng: np.random.Generator) -> dict[str, Any]:
+        """Sample one random parameter set for optimizer initialization."""
         return {
             "bb_period": int(rng.integers(10, 50)),
             "bb_std": float(rng.uniform(1.3, 3.2)),
@@ -48,6 +54,7 @@ class MeanReversionStrategy(BaseStrategy):
 
     @classmethod
     def mutate_params(cls, params: dict[str, Any], strength: float, rng: np.random.Generator) -> dict[str, Any]:
+        """Mutate parameters with bounded gaussian noise."""
         s = max(0.01, float(strength))
         out = dict(params)
         out["bb_period"] = _clip_int(out["bb_period"] + rng.normal(0, 6 * s), 6, 70)
@@ -61,6 +68,7 @@ class MeanReversionStrategy(BaseStrategy):
         return out
 
     def decide(self, row: pd.Series, position_side: int) -> StrategyDecision:
+        """Generate entry/exit/hold action from current feature snapshot."""
         required = ["zscore_20", "rsi", "close", "bb_mid", "regime_adx"]
         if self.invalid_row(row, required):
             return self.flat("indicator_not_ready")

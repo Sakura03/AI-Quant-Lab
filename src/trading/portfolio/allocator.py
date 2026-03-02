@@ -10,7 +10,10 @@ from trading.execution.simulator import ExecutionSimulator
 
 
 class PortfolioLedger:
+    """Stateful portfolio ledger for positions, cash, trades, and equity snapshots."""
+
     def __init__(self, initial_balance: float, execution: ExecutionSimulator):
+        """Initialize ledger with starting cash and empty position/trade state."""
         self.initial_balance = float(initial_balance)
         self.cash = float(initial_balance)
         self.execution = execution
@@ -23,6 +26,7 @@ class PortfolioLedger:
         self.peak_equity = float(initial_balance)
 
     def symbol_notional(self, symbol: str, mark_prices: dict[str, float]) -> float:
+        """Compute one symbol's current absolute notional exposure."""
         pos = self.positions.get(symbol)
         if pos is None:
             return 0.0
@@ -30,9 +34,11 @@ class PortfolioLedger:
         return abs(px * pos.qty)
 
     def gross_notional(self, mark_prices: dict[str, float]) -> float:
+        """Compute total absolute notional exposure across open positions."""
         return sum(self.symbol_notional(s, mark_prices) for s in self.positions)
 
     def unrealized_pnl(self, mark_prices: dict[str, float]) -> float:
+        """Compute total unrealized PnL using provided mark prices."""
         pnl = 0.0
         for symbol, pos in self.positions.items():
             px = mark_prices.get(symbol, pos.entry_price)
@@ -40,11 +46,13 @@ class PortfolioLedger:
         return pnl
 
     def mark_to_market(self, mark_prices: dict[str, float]) -> float:
+        """Mark portfolio to market and update running equity peak."""
         equity = self.cash + self.unrealized_pnl(mark_prices)
         self.peak_equity = max(self.peak_equity, equity)
         return equity
 
     def current_drawdown(self, mark_prices: dict[str, float]) -> float:
+        """Return current drawdown ratio from peak equity."""
         equity = self.mark_to_market(mark_prices)
         if self.peak_equity <= 0:
             return 0.0
@@ -65,6 +73,7 @@ class PortfolioLedger:
         stop_price: float,
         take_price: float,
     ) -> bool:
+        """Open a new position and book entry costs."""
         if symbol in self.positions:
             return False
         if qty <= 0 or entry_price <= 0:
@@ -102,6 +111,7 @@ class PortfolioLedger:
         raw_price: float,
         reason: str,
     ) -> Trade | None:
+        """Close one position, realize PnL, and append one trade record."""
         pos = self.positions.pop(symbol, None)
         if pos is None:
             return None
@@ -142,6 +152,7 @@ class PortfolioLedger:
         return trade
 
     def apply_funding(self, symbol: str, funding_rate: float, mark_price: float):
+        """Apply one funding cashflow to an open position."""
         pos = self.positions.get(symbol)
         if pos is None:
             return
@@ -151,11 +162,13 @@ class PortfolioLedger:
         self.cash += funding_pnl
 
     def increment_holding_bar(self, symbol: str):
+        """Increment holding-bar counter for one open position."""
         pos = self.positions.get(symbol)
         if pos is not None:
             pos.holding_bars += 1
 
     def snapshot(self, timestamp: pd.Timestamp, mark_prices: dict[str, float]):
+        """Append one portfolio snapshot row at current timestamp."""
         equity = self.mark_to_market(mark_prices)
         gross = self.gross_notional(mark_prices)
         drawdown = 0.0 if self.peak_equity <= 0 else max(0.0, 1.0 - equity / self.peak_equity)
@@ -178,6 +191,7 @@ class PortfolioLedger:
         )
 
     def equity_frame(self) -> pd.DataFrame:
+        """Build deduplicated equity time series and normalized drawdown column."""
         if not self.equity_records:
             return pd.DataFrame(
                 columns=[
@@ -198,6 +212,7 @@ class PortfolioLedger:
         return out.reset_index(drop=True)
 
     def trades_frame(self) -> pd.DataFrame:
+        """Build trade ledger as DataFrame with stable schema even when empty."""
         if not self.trades:
             cols = list(
                 asdict(

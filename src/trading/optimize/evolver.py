@@ -18,29 +18,36 @@ from trading.strategies.factory import mutate_strategy_params, sample_strategy_p
 
 
 class WalkForwardEvolver:
+    """Evolutionary optimizer over walk-forward windows."""
+
     def __init__(self, config: TradingConfig, progress_cb: Callable[[str], None] | None = None):
+        """Initialize optimizer state and reusable market data loader."""
         self.cfg = config
         self.rng = np.random.default_rng(config.engine.seed)
         self.loader = MarketDataLoader(config.data)
         self.progress_cb = progress_cb
 
     def _progress(self, message: str):
+        """Emit progress message through optional callback."""
         if self.progress_cb is not None:
             self.progress_cb(message)
 
     def _clone_cfg_with_period(self, start: pd.Timestamp, end: pd.Timestamp) -> TradingConfig:
+        """Clone base config and replace backtest date range."""
         raw = copy.deepcopy(self.cfg.to_dict())
         raw["data"]["start"] = pd.Timestamp(start).strftime("%Y%m%d-%H%M%S")
         raw["data"]["end"] = pd.Timestamp(end).strftime("%Y%m%d-%H%M%S")
         return TradingConfig.from_dict(raw)
 
     def _sample_strategy_subset(self) -> list[str]:
+        """Sample a non-empty subset of enabled strategies."""
         pool = list(self.cfg.strategies.enabled)
         k = int(self.rng.integers(1, len(pool) + 1))
         picked = [str(x) for x in self.rng.choice(pool, size=k, replace=False).tolist()]
         return sorted(picked)
 
     def _sample_genome(self) -> dict[str, Any]:
+        """Create one random genome candidate."""
         strategy_ids = self._sample_strategy_subset()
         signal_tf = str(self.rng.choice(self.cfg.data.signal_tfs))
         regime_candidates = list(self.cfg.data.regime_tfs) if self.cfg.data.regime_tfs else [None]
@@ -54,6 +61,7 @@ class WalkForwardEvolver:
         }
 
     def _mutate_genome(self, genome: dict[str, Any]) -> dict[str, Any]:
+        """Mutate timeframe/strategy set/params of one genome."""
         out = copy.deepcopy(genome)
         m = self.cfg.optimizer.mutation_strength
 
@@ -77,6 +85,7 @@ class WalkForwardEvolver:
         return out
 
     def _crossover(self, a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+        """Cross two parent genomes and post-mutate the child."""
         child = {}
         child["signal_tf"] = a["signal_tf"] if self.rng.random() < 0.5 else b["signal_tf"]
         child["regime_tf"] = a["regime_tf"] if self.rng.random() < 0.5 else b["regime_tf"]
@@ -105,6 +114,7 @@ class WalkForwardEvolver:
         return self._mutate_genome(child)
 
     def _run_period_backtest(self, genome: dict[str, Any], start: pd.Timestamp, end: pd.Timestamp):
+        """Run one backtest for one genome in one date segment."""
         period_cfg = self._clone_cfg_with_period(start, end)
         engine = BacktestEngine(
             config=period_cfg,
@@ -118,6 +128,7 @@ class WalkForwardEvolver:
         return engine.run()
 
     def _eval_genome(self, genome: dict[str, Any], win: WalkForwardWindow) -> dict[str, Any]:
+        """Evaluate genome on train/val and produce objective score."""
         train_res = self._run_period_backtest(genome, win.train_start, win.train_end)
         val_res = self._run_period_backtest(genome, win.val_start, win.val_end)
 
@@ -143,14 +154,17 @@ class WalkForwardEvolver:
 
     @staticmethod
     def _serialize_genome(genome: dict[str, Any]) -> str:
+        """Serialize genome into canonical JSON for tabular logging."""
         return json.dumps(genome, ensure_ascii=False, sort_keys=True)
 
     def _stitch_oos(self, window_test_results: list[dict[str, Any]]) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Stitch test windows into one continuous out-of-sample equity/trade set."""
         stitched_parts = []
         stitched_trades = []
         capital = self.cfg.portfolio.initial_balance
 
         for row in window_test_results:
+            # Rebase each test window using previous segment ending capital.
             eq = row["test"].equity_curve.copy()
             if eq.empty:
                 continue
@@ -183,6 +197,7 @@ class WalkForwardEvolver:
         return stitched_equity, stitched_trade_df
 
     def run(self) -> ExperimentResult:
+        """Run full walk-forward evolutionary optimization and collect reports."""
         windows = make_walk_forward_windows(
             start=self.cfg.data.start,
             end=self.cfg.data.end,
@@ -206,6 +221,7 @@ class WalkForwardEvolver:
 
         total_windows = len(windows)
         for wid, win in enumerate(windows, start=1):
+            # 1) Solve current window: search on train/val, then evaluate on test.
             self._progress(
                 f"optimize: window {wid}/{total_windows} "
                 f"train={win.train_start.date()}->{win.train_end.date()} "
@@ -218,6 +234,7 @@ class WalkForwardEvolver:
             best_val_score = -1e18
             report_every = max(1, self.cfg.optimizer.trials_per_window // 10)
 
+            # 1a) Seed initial population from elite memory and random genomes.
             for _ in range(self.cfg.optimizer.population):
                 if elite_memory and self.rng.random() < self.cfg.optimizer.prior_adoption_prob:
                     seed = copy.deepcopy(elite_memory[int(self.rng.integers(0, len(elite_memory)))])
@@ -234,6 +251,7 @@ class WalkForwardEvolver:
                         f"best_val_score={best_val_score:.4f}"
                     )
 
+            # 1b) Expand with mutation/crossover until configured trial budget.
             while len(evaluated) < self.cfg.optimizer.trials_per_window:
                 evaluated.sort(key=lambda x: x["score"], reverse=True)
                 elites = evaluated[: self.cfg.optimizer.elite_top_k]
@@ -253,6 +271,7 @@ class WalkForwardEvolver:
                         f"best_val_score={best_val_score:.4f}"
                     )
 
+            # 1c) Promote best validation genome and score it on test split.
             evaluated.sort(key=lambda x: x["score"], reverse=True)
             best = evaluated[0]
 
@@ -290,8 +309,10 @@ class WalkForwardEvolver:
                 }
             )
 
+            # 1d) Keep elites as prior for next walk-forward window.
             elite_memory = [copy.deepcopy(x["genome"]) for x in evaluated[: self.cfg.optimizer.elite_top_k]]
 
+            # 1e) Persist per-trial diagnostics for auditability.
             for tid, trial in enumerate(evaluated, start=1):
                 row = {
                     "window_id": win.window_id,
@@ -311,6 +332,7 @@ class WalkForwardEvolver:
 
             all_trials_rows.extend(trial_rows)
 
+        # 2) Stitch all test windows and summarize global OOS metrics.
         stitched_eq, stitched_trades = self._stitch_oos(window_rows)
         stitched_metrics = compute_metrics(stitched_eq, stitched_trades, self.cfg.data.exec_tf).to_dict()
         self._progress(
@@ -319,6 +341,7 @@ class WalkForwardEvolver:
             f"trades={int(stitched_metrics.get('trade_count', 0))}"
         )
 
+        # 3) Materialize strongly-typed result object for downstream reporting.
         best_window = max(window_rows, key=lambda x: x["test_score"])
 
         window_results = []

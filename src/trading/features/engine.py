@@ -7,10 +7,12 @@ import pandas as pd
 
 
 def ema(series: pd.Series, period: int) -> pd.Series:
+    """Exponential moving average."""
     return series.ewm(span=max(1, int(period)), adjust=False).mean()
 
 
 def macd(series: pd.Series, fast: int, slow: int, signal: int) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """MACD line, signal line, and histogram."""
     fast_ema = ema(series, fast)
     slow_ema = ema(series, slow)
     macd_line = fast_ema - slow_ema
@@ -20,6 +22,7 @@ def macd(series: pd.Series, fast: int, slow: int, signal: int) -> tuple[pd.Serie
 
 
 def rsi(series: pd.Series, period: int) -> pd.Series:
+    """Relative Strength Index."""
     delta = series.diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
@@ -31,6 +34,7 @@ def rsi(series: pd.Series, period: int) -> pd.Series:
 
 
 def bbands(series: pd.Series, period: int, num_std: float) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Bollinger upper/middle/lower bands."""
     p = max(2, int(period))
     mid = series.rolling(p).mean()
     std = series.rolling(p).std(ddof=0)
@@ -40,6 +44,7 @@ def bbands(series: pd.Series, period: int, num_std: float) -> tuple[pd.Series, p
 
 
 def true_range(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
+    """True range used by ATR/ADX."""
     prev_close = close.shift(1)
     a = (high - low).abs()
     b = (high - prev_close).abs()
@@ -48,11 +53,13 @@ def true_range(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
 
 
 def atr(df: pd.DataFrame, period: int) -> pd.Series:
+    """Average true range."""
     tr = true_range(df["high"], df["low"], df["close"])
     return tr.ewm(alpha=1.0 / max(1, int(period)), adjust=False).mean()
 
 
 def adx(df: pd.DataFrame, period: int) -> pd.Series:
+    """Average Directional Index."""
     high = df["high"]
     low = df["low"]
     close = df["close"]
@@ -75,6 +82,7 @@ def adx(df: pd.DataFrame, period: int) -> pd.Series:
 
 
 def compute_base_features(df: pd.DataFrame, params: dict[str, Any]) -> pd.DataFrame:
+    """Compute per-timeframe technical feature columns used by strategies."""
     out = df.copy()
 
     out["ema_fast"] = ema(out["close"], int(params.get("ema_fast", 20)))
@@ -115,6 +123,7 @@ def merge_regime_features(
     signal_features: pd.DataFrame,
     regime_features: pd.DataFrame,
 ) -> pd.DataFrame:
+    """Backward-align regime features to signal close_time without lookahead."""
     keep = [
         "close_time",
         "ema_fast",
@@ -170,6 +179,7 @@ def build_feature_frame(
     regime_df: pd.DataFrame,
     params: dict[str, Any],
 ) -> pd.DataFrame:
+    """Build final strategy feature frame with signal+regime inputs."""
     signal_features = compute_base_features(signal_df, params)
     regime_features = compute_base_features(regime_df, params)
     merged = merge_regime_features(signal_features, regime_features)

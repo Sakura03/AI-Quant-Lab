@@ -10,20 +10,24 @@ from trading.strategies.base import BaseStrategy, StrategyDecision
 
 
 def _clip_int(v: float, lo: int, hi: int) -> int:
+    """Clamp and round to bounded integer."""
     return int(max(lo, min(hi, round(v))))
 
 
 def _clip_float(v: float, lo: float, hi: float) -> float:
+    """Clamp to bounded float."""
     return float(max(lo, min(hi, v)))
 
 
 class DipBuyingStrategy(BaseStrategy):
+    """Dip/spike reversal strategy with regime-side safety checks."""
+
     strategy_id = "dip_buying"
 
     @classmethod
     def default_params(cls) -> dict[str, Any]:
+        """Return default hyper-parameters."""
         return {
-            "dip_lookback": 12,
             "dip_pct_th": 0.035,
             "spike_pct_th": 0.035,
             "rsi_low": 28.0,
@@ -36,8 +40,8 @@ class DipBuyingStrategy(BaseStrategy):
 
     @classmethod
     def sample_params(cls, rng: np.random.Generator) -> dict[str, Any]:
+        """Sample one random parameter set for optimizer initialization."""
         return {
-            "dip_lookback": int(rng.integers(4, 30)),
             "dip_pct_th": float(rng.uniform(0.01, 0.08)),
             "spike_pct_th": float(rng.uniform(0.01, 0.08)),
             "rsi_low": float(rng.uniform(10.0, 35.0)),
@@ -50,9 +54,9 @@ class DipBuyingStrategy(BaseStrategy):
 
     @classmethod
     def mutate_params(cls, params: dict[str, Any], strength: float, rng: np.random.Generator) -> dict[str, Any]:
+        """Mutate parameters with bounded gaussian noise."""
         s = max(0.01, float(strength))
         out = dict(params)
-        out["dip_lookback"] = _clip_int(out["dip_lookback"] + rng.normal(0, 5 * s), 2, 60)
         out["dip_pct_th"] = _clip_float(out["dip_pct_th"] + rng.normal(0, 0.01 * s), 0.005, 0.15)
         out["spike_pct_th"] = _clip_float(out["spike_pct_th"] + rng.normal(0, 0.01 * s), 0.005, 0.15)
         out["rsi_low"] = _clip_float(out["rsi_low"] + rng.normal(0, 4 * s), 5.0, 45.0)
@@ -64,6 +68,7 @@ class DipBuyingStrategy(BaseStrategy):
         return out
 
     def decide(self, row: pd.Series, position_side: int) -> StrategyDecision:
+        """Generate entry/exit/hold action from current feature snapshot."""
         required = ["close", "rsi", "ret_5", "regime_ema_fast", "regime_ema_slow", "regime_ret_5"]
         if self.invalid_row(row, required):
             return self.flat("indicator_not_ready")

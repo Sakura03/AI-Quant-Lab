@@ -14,79 +14,78 @@ import matplotlib.pyplot as plt
 
 
 def _as_datetime(series: pd.Series) -> pd.Series:
+    """Convert input series to pandas datetime."""
     if series.empty:
         return series
     return pd.to_datetime(series)
 
 
 def write_equity_drawdown_html(equity_df: pd.DataFrame, save_path: str):
+    """Render combined equity and drawdown as interactive HTML figure."""
     if equity_df.empty:
         return
 
     df = equity_df.copy().sort_values("timestamp").reset_index(drop=True)
     df["timestamp"] = _as_datetime(df["timestamp"])
-
+    equity = df["equity"].astype(float)
     if "drawdown" in df.columns:
         dd = df["drawdown"].astype(float)
     else:
-        peak = df["equity"].astype(float).cummax()
-        dd = 1.0 - df["equity"].astype(float) / peak
+        peak = equity.cummax()
+        dd = 1.0 - equity / peak
+    dd_pct = dd * 100.0
 
-    fig = make_subplots(
-        rows=2,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.05,
-        row_heights=[0.7, 0.3],
-        subplot_titles=("Equity Curve", "Drawdown"),
-    )
-
+    fig = go.Figure()
     fig.add_trace(
         go.Scatter(
             x=df["timestamp"],
-            y=df["equity"],
+            y=equity,
             mode="lines",
             name="Equity",
             line=dict(color="#1f77b4", width=2),
-        ),
-        row=1,
-        col=1,
+            hovertemplate="time=%{x}<br>equity=%{y:.2f}<extra></extra>",
+        )
     )
-
     fig.add_trace(
         go.Scatter(
             x=df["timestamp"],
-            y=dd * 100.0,
+            y=dd_pct,
             mode="lines",
             name="Drawdown %",
             line=dict(color="#d62728", width=1.5),
             fill="tozeroy",
             fillcolor="rgba(214,39,40,0.2)",
-        ),
-        row=2,
-        col=1,
+            yaxis="y2",
+            hovertemplate="time=%{x}<br>drawdown=%{y:.2f}%<extra></extra>",
+        )
     )
 
-    fig.update_yaxes(title_text="Equity", row=1, col=1)
-    fig.update_yaxes(title_text="Drawdown %", row=2, col=1)
-    fig.update_xaxes(title_text="Time", row=2, col=1)
     fig.update_layout(
         title="Backtest Equity & Drawdown",
         template="plotly_white",
         height=820,
         hovermode="x unified",
+        yaxis=dict(title="Equity", side="left"),
+        yaxis2=dict(
+            title="Drawdown %",
+            overlaying="y",
+            side="right",
+            range=[100, 0],
+            showgrid=False,
+            ticks="outside",
+        ),
+        xaxis=dict(title="Time"),
     )
-
     fig.write_html(save_path, include_plotlyjs="cdn", full_html=True)
 
 
 def write_equity_drawdown_png(equity_df: pd.DataFrame, save_path: str):
+    """Render equity and drawdown as static PNG image."""
     if equity_df.empty:
         return
 
     df = equity_df.copy().sort_values("timestamp").reset_index(drop=True)
     df["timestamp"] = _as_datetime(df["timestamp"])
-
     equity = df["equity"].astype(float)
     if "drawdown" in df.columns:
         dd = df["drawdown"].astype(float)
@@ -94,36 +93,34 @@ def write_equity_drawdown_png(equity_df: pd.DataFrame, save_path: str):
         dd = 1.0 - equity / equity.cummax()
     dd_pct = dd * 100.0
 
-    fig, (ax_eq, ax_dd) = plt.subplots(
-        2,
-        1,
-        figsize=(14, 8),
-        sharex=True,
-        gridspec_kw={"height_ratios": [0.72, 0.28]},
-    )
+    fig, ax_eq = plt.subplots(figsize=(14, 6))
+    ax_dd = ax_eq.twinx()
 
-    ax_eq.plot(df["timestamp"], equity, color="#1f77b4", linewidth=1.8)
-    ax_eq.set_title("Backtest Equity Curve")
-    ax_eq.set_ylabel("Equity")
+    ax_eq.plot(df["timestamp"], equity, color="#1f77b4", linewidth=1.8, label="Equity")
+    ax_eq.set_ylabel("Equity", color="#1f77b4")
+    ax_eq.tick_params(axis="y", colors="#1f77b4")
     ax_eq.grid(alpha=0.25)
 
-    ax_dd.plot(df["timestamp"], dd_pct, color="#d62728", linewidth=1.4)
+    ax_dd.plot(df["timestamp"], dd_pct, color="#d62728", linewidth=1.4, label="Drawdown %")
     ax_dd.fill_between(df["timestamp"], dd_pct, 0.0, color="#d62728", alpha=0.2)
-    ax_dd.set_title("Drawdown")
-    ax_dd.set_ylabel("Drawdown %")
+    ax_dd.set_ylabel("Drawdown %", color="#d62728")
+    ax_dd.set_ylim(100, 0)
+    ax_dd.tick_params(axis="y", colors="#d62728")
     ax_dd.set_xlabel("Time")
-    ax_dd.grid(alpha=0.25)
 
+    fig.suptitle("Backtest Equity & Drawdown")
     fig.tight_layout()
     fig.savefig(save_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
 
 
 def _safe_symbol(symbol: str) -> str:
+    """Convert symbol string into filename-safe token."""
     return symbol.replace("/", "_")
 
 
 def _parse_timeframe(timeframe: str) -> tuple[str, pd.Timedelta] | None:
+    """Parse timeframe text into pandas resample rule and timedelta."""
     m = re.fullmatch(r"(\d+)([mhd])", str(timeframe).strip().lower())
     if not m:
         return None
@@ -137,6 +134,7 @@ def _parse_timeframe(timeframe: str) -> tuple[str, pd.Timedelta] | None:
 
 
 def _resample_bars_for_plot(bars: pd.DataFrame, target_timeframe: str | None) -> pd.DataFrame:
+    """Resample raw execution bars to plotting timeframe when target is coarser."""
     if bars.empty or not target_timeframe:
         return bars
 
@@ -177,6 +175,7 @@ def _resample_bars_for_plot(bars: pd.DataFrame, target_timeframe: str | None) ->
 
 
 def _build_trade_events(trades_df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    """Build point-level buy/sell events from entry/exit trades for one symbol."""
     if trades_df.empty or "symbol" not in trades_df.columns:
         return pd.DataFrame(columns=["time", "price", "action", "event"])
 
@@ -206,7 +205,8 @@ def _build_trade_events(trades_df: pd.DataFrame, symbol: str) -> pd.DataFrame:
     return out
 
 
-def _add_trade_markers_and_arrows(fig: go.Figure, events: pd.DataFrame):
+def _add_trade_markers_and_arrows(fig: go.Figure, events: pd.DataFrame, trades: pd.DataFrame):
+    """Overlay black fill markers and buy/sell arrow annotations."""
     if events.empty:
         return
 
@@ -241,6 +241,45 @@ def _add_trade_markers_and_arrows(fig: go.Figure, events: pd.DataFrame):
             opacity=0.98,
         )
 
+    trades = trades.copy()
+    if trades.empty:
+        return
+
+    for trade in trades.itertuples(index=False):
+        if pd.isna(trade.entry_time) or pd.isna(trade.exit_time):
+            continue
+        entry_time = pd.Timestamp(trade.entry_time)
+        exit_time = pd.Timestamp(trade.exit_time)
+        entry_price = float(getattr(trade, "entry_price", 0.0))
+        exit_price = float(getattr(trade, "exit_price", 0.0))
+
+        fig.add_trace(
+            go.Scatter(
+                x=[entry_time, exit_time],
+                y=[entry_price, exit_price],
+                mode="lines",
+                name="Trade Path",
+                line=dict(color="gray", width=1, dash="dash"),
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+
+        pnl_pct = getattr(trade, "pnl_pct", None)
+        if pnl_pct is None or pd.isna(pnl_pct):
+            continue
+        pnl_text = f"{pnl_pct:+.2f}%"
+        text_shift = 14 if pnl_pct >= 0 else -14
+        fig.add_annotation(
+            x=exit_time,
+            y=exit_price,
+            text=pnl_text,
+            showarrow=False,
+            yshift=text_shift,
+            font=dict(size=10, color="black"),
+            bgcolor="rgba(255,255,255,0.8)",
+        )
+
 
 def write_symbol_candles_with_trades_html(
     symbol_execution: dict[str, pd.DataFrame],
@@ -248,6 +287,7 @@ def write_symbol_candles_with_trades_html(
     out_dir: str,
     candle_timeframe: str | None = None,
 ):
+    """Render per-symbol candlestick HTML with trade markers/annotations."""
     os.makedirs(out_dir, exist_ok=True)
 
     trades = trades_df.copy()
@@ -276,8 +316,9 @@ def write_symbol_candles_with_trades_html(
             )
         )
 
-        events = _build_trade_events(trades, symbol)
-        _add_trade_markers_and_arrows(fig, events)
+        symbol_trades = trades[trades["symbol"] == symbol].copy()
+        events = _build_trade_events(symbol_trades, symbol)
+        _add_trade_markers_and_arrows(fig, events, symbol_trades)
 
         tf_note = f" ({candle_timeframe})" if candle_timeframe else ""
         fig.update_layout(

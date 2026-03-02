@@ -14,6 +14,7 @@ VALID_STRATEGIES = {"trend_following", "dip_buying", "mean_reversion", "hybrid_r
 
 
 def parse_timestamp(value: Any) -> pd.Timestamp:
+    """Parse a flexible timestamp input into timezone-naive pandas Timestamp."""
     if isinstance(value, pd.Timestamp):
         return value.tz_localize(None) if value.tzinfo is not None else value
     if isinstance(value, str):
@@ -26,12 +27,16 @@ def parse_timestamp(value: Any) -> pd.Timestamp:
 
 @dataclass
 class EngineConfig:
+    """Engine-level settings such as random seed and job parallelism."""
+
     seed: int = 42
     n_jobs: int = 1
 
 
 @dataclass
 class DataConfig:
+    """Data source and time-range configuration for backtest/optimize."""
+
     root: str = "data"
     universe: list[str] = None
     exec_tf: str = "1m"
@@ -43,6 +48,7 @@ class DataConfig:
     timestamp_semantics: str = "close"
 
     def __post_init__(self):
+        """Populate default universe/timeframes when config omits them."""
         if self.universe is None:
             self.universe = ["BTC/USDT", "ETH/USDT"]
         if self.signal_tfs is None:
@@ -52,12 +58,14 @@ class DataConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "DataConfig":
+        """Build DataConfig from dict and normalize start/end timestamps."""
         cfg = cls(**data)
         cfg.start = parse_timestamp(cfg.start)
         cfg.end = parse_timestamp(cfg.end)
         return cfg
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize DataConfig to plain dict with stable timestamp format."""
         out = asdict(self)
         out["start"] = self.start.strftime(TIME_FMT)
         out["end"] = self.end.strftime(TIME_FMT)
@@ -66,6 +74,8 @@ class DataConfig:
 
 @dataclass
 class SplitConfig:
+    """Walk-forward split lengths and embargo gap."""
+
     train_months: int = 18
     val_months: int = 3
     test_months: int = 3
@@ -75,10 +85,13 @@ class SplitConfig:
 
 @dataclass
 class StrategyConfig:
+    """Strategy universe and per-strategy position cap."""
+
     enabled: list[str] = None
     per_strategy_max_positions: int = 3
 
     def __post_init__(self):
+        """Apply full default strategy set when `enabled` is not specified."""
         if self.enabled is None:
             self.enabled = [
                 "trend_following",
@@ -90,6 +103,8 @@ class StrategyConfig:
 
 @dataclass
 class PortfolioConfig:
+    """Portfolio risk and exposure constraints."""
+
     initial_balance: float = 100000.0
     max_gross_leverage: float = 1.8
     max_total_positions: int = 8
@@ -103,6 +118,8 @@ class PortfolioConfig:
 
 @dataclass
 class CostsConfig:
+    """Trading frictions and funding settings."""
+
     fee_rate: float = 0.0005
     slippage_bps: float = 2.0
     funding_enabled: bool = True
@@ -110,6 +127,8 @@ class CostsConfig:
 
 @dataclass
 class OptimizerConfig:
+    """Evolutionary optimizer hyper-parameters."""
+
     trials_per_window: int = 800
     population: int = 80
     elite_top_k: int = 12
@@ -121,10 +140,13 @@ class OptimizerConfig:
 
 @dataclass
 class ObjectiveConfig:
+    """Objective weights and hard constraints used in optimization."""
+
     weights: dict[str, float] = None
     hard_limits: dict[str, float] = None
 
     def __post_init__(self):
+        """Fill default objective weights/limits when they are omitted."""
         if self.weights is None:
             self.weights = {
                 "sharpe": 1.0,
@@ -139,11 +161,15 @@ class ObjectiveConfig:
 
 @dataclass
 class OutputConfig:
+    """Output directory configuration."""
+
     dir: str = "results/trading_enterprise"
 
 
 @dataclass
 class TradingConfig:
+    """Top-level runtime configuration for the trading framework."""
+
     engine: EngineConfig
     data: DataConfig
     split: SplitConfig
@@ -156,6 +182,7 @@ class TradingConfig:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "TradingConfig":
+        """Construct a full TradingConfig object tree from raw mapping."""
         cfg = cls(
             engine=EngineConfig(**raw.get("engine", {})),
             data=DataConfig.from_dict(raw.get("data", {})),
@@ -172,6 +199,7 @@ class TradingConfig:
 
     @staticmethod
     def parse_file(path: str) -> "TradingConfig":
+        """Load YAML config file and parse it into TradingConfig."""
         if not osp.isfile(path):
             raise FileNotFoundError(f"Config file not found: {path}")
         with open(path, "r", encoding="utf-8") as f:
@@ -181,6 +209,7 @@ class TradingConfig:
         return TradingConfig.from_dict(raw)
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize full config to dict for persistence and cloning."""
         return {
             "engine": asdict(self.engine),
             "data": self.data.to_dict(),
@@ -194,6 +223,7 @@ class TradingConfig:
         }
 
     def validate(self):
+        """Run schema-level and risk-related sanity checks."""
         if self.data.timestamp_semantics != "close":
             raise ValueError("data.timestamp_semantics must be 'close'")
         if self.data.start >= self.data.end:
