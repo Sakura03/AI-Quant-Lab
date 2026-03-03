@@ -128,3 +128,65 @@ def test_execute_due_orders_records_entry_and_exit_at_execution_bar_open_time():
 
     assert len(ledger.trades) == 1
     assert ledger.trades[0].exit_time == pd.Timestamp("2025-01-01 00:01:00")
+
+
+def test_check_stop_take_closes_position_at_execution_bar_close_time():
+    exec_df = pd.DataFrame(
+        {
+            "close_time": pd.to_datetime(["2025-01-01 00:02:00"]),
+            "open_time": pd.to_datetime(["2025-01-01 00:01:00"]),
+            "open": [100.0],
+            "high": [100.0],
+            "low": [98.0],  # hit long stop at 99
+            "close": [99.5],
+            "volume": [1.0],
+            "timestamp": pd.to_datetime(["2025-01-01 00:02:00"]),
+            "timeframe": ["1m"],
+        }
+    )
+    sig = pd.DataFrame(
+        {
+            "close_time": pd.to_datetime(["2025-01-01 00:00:00"]),
+            "open_time": pd.to_datetime(["2024-12-31 23:00:00"]),
+            "open": [100.0],
+            "high": [100.0],
+            "low": [100.0],
+            "close": [100.0],
+            "volume": [1.0],
+            "timestamp": pd.to_datetime(["2025-01-01 00:00:00"]),
+            "timeframe": ["1h"],
+        }
+    )
+    funding = pd.DataFrame({"close_time": pd.to_datetime([]), "fundingRate": pd.Series(dtype=float)})
+
+    bt = BacktestEngine(
+        config=_cfg(),
+        signal_tf="1h",
+        regime_tf="1h",
+        strategy_ids=["trend_following"],
+        strategy_params={"trend_following": {}},
+        market_bundles={"BTC/USDT": SymbolDataBundle(signal=sig, regime=sig, execution=exec_df, funding=funding)},
+    )
+
+    ledger = PortfolioLedger(10000.0, bt.execution)
+    opened = ledger.open_position(
+        symbol="BTC/USDT",
+        side=LONG,
+        timestamp=pd.Timestamp("2025-01-01 00:01:00"),
+        signal_time=pd.Timestamp("2025-01-01 00:00:00"),
+        strategy="trend_following",
+        entry_reason="test_entry",
+        entry_price=100.0,
+        raw_price=100.0,
+        qty=1.0,
+        leverage=1.0,
+        stop_price=99.0,
+        take_price=105.0,
+    )
+    assert opened
+
+    bt._check_stop_take(pd.Timestamp("2025-01-01 00:02:00"), ledger)
+
+    assert len(ledger.trades) == 1
+    assert ledger.trades[0].exit_reason == "stop_loss"
+    assert ledger.trades[0].exit_time == pd.Timestamp("2025-01-01 00:02:00")

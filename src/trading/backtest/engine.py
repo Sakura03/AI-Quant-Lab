@@ -100,6 +100,12 @@ class BacktestEngine:
         if self.progress_cb is not None:
             self.progress_cb(message)
 
+    def _bar_time_col(self, frame: pd.DataFrame) -> str:
+        """Return configured bar-time column for range slicing."""
+        if self.cfg.data.timestamp_semantics == "open" and "open_time" in frame.columns:
+            return "open_time"
+        return "close_time"
+
     def _prepare_frames(self):
         """Prepare execution/funding/feature frames indexed by close_time."""
         start = self.cfg.data.start
@@ -107,7 +113,8 @@ class BacktestEngine:
 
         for symbol, bundle in self.market_bundles.items():
             exec_df = bundle.execution.copy().sort_values("close_time").reset_index(drop=True)
-            exec_df = exec_df[(exec_df["close_time"] >= start) & (exec_df["close_time"] <= end)].copy()
+            exec_time_col = self._bar_time_col(exec_df)
+            exec_df = exec_df[(exec_df[exec_time_col] >= start) & (exec_df[exec_time_col] <= end)].copy()
             if exec_df.empty:
                 continue
 
@@ -124,7 +131,8 @@ class BacktestEngine:
 
             for sid, strategy in self.strategies.items():
                 features = build_feature_frame(bundle.signal, bundle.regime, strategy.params)
-                features = features[features["close_time"] <= end].copy().sort_values("close_time").reset_index(drop=True)
+                feature_time_col = self._bar_time_col(features)
+                features = features[features[feature_time_col] <= end].copy().sort_values("close_time").reset_index(drop=True)
                 self.feature_frames[sid][symbol] = features
                 self.feature_indexed[sid][symbol] = features.set_index("close_time")
 
@@ -132,7 +140,8 @@ class BacktestEngine:
         """Build union timeline of all symbols' execution close timestamps."""
         all_ts = []
         for _, frame in self.exec_frames.items():
-            part = frame[(frame["close_time"] >= start) & (frame["close_time"] <= end)]
+            time_col = self._bar_time_col(frame)
+            part = frame[(frame[time_col] >= start) & (frame[time_col] <= end)]
             all_ts.append(part["close_time"])
         if not all_ts:
             return []
@@ -368,7 +377,7 @@ class BacktestEngine:
                 continue
 
             bar = exec_df.loc[ts]
-            exec_open_time = pd.Timestamp(bar["open_time"])
+            exec_close_time = pd.Timestamp(ts)
             high = float(bar["high"])
             low = float(bar["low"])
 
@@ -398,7 +407,7 @@ class BacktestEngine:
                 continue
 
             fill = self.execution.apply_slippage(float(hit_price), side_to_close_order(pos.side))
-            ledger.close_position(symbol, exec_open_time, fill, float(hit_price), reason)
+            ledger.close_position(symbol, exec_close_time, fill, float(hit_price), reason)
 
     def _max_hold_limit(self) -> int:
         """Use the strictest max_hold among enabled strategies."""
@@ -582,7 +591,7 @@ class BacktestEngine:
         )
 
         symbol_exec = {
-            symbol: df[(df["close_time"] >= start) & (df["close_time"] <= end)].copy()
+            symbol: df[(df[self._bar_time_col(df)] >= start) & (df[self._bar_time_col(df)] <= end)].copy()
             for symbol, df in self.exec_frames.items()
         }
 

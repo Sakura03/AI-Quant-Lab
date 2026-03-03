@@ -62,6 +62,7 @@ class DataConfig:
         cfg = cls(**data)
         cfg.start = parse_timestamp(cfg.start)
         cfg.end = parse_timestamp(cfg.end)
+        cfg.timestamp_semantics = str(cfg.timestamp_semantics).strip().lower()
         return cfg
 
     def to_dict(self) -> dict[str, Any]:
@@ -224,8 +225,8 @@ class TradingConfig:
 
     def validate(self):
         """Run schema-level and risk-related sanity checks."""
-        if self.data.timestamp_semantics != "close":
-            raise ValueError("data.timestamp_semantics must be 'close'")
+        if self.data.timestamp_semantics not in {"open", "close"}:
+            raise ValueError("data.timestamp_semantics must be one of: 'open', 'close'")
         if self.data.start >= self.data.end:
             raise ValueError("data.start must be earlier than data.end")
         if not self.data.universe:

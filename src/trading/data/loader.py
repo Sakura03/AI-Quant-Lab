@@ -23,7 +23,7 @@ class SymbolDataBundle:
 
 
 class MarketDataLoader:
-    """Loads and caches raw symbol/timeframe bars with close-time semantics."""
+    """Loads and caches raw symbol/timeframe bars with configurable timestamp semantics."""
 
     def __init__(self, data_cfg: DataConfig):
         """Initialize loader caches bound to one DataConfig."""
@@ -31,8 +31,14 @@ class MarketDataLoader:
         self._cache: dict[tuple[str, str], pd.DataFrame] = {}
         self._funding_cache: dict[str, pd.DataFrame] = {}
 
+    def _bar_time_col(self, frame: pd.DataFrame) -> str:
+        """Return the semantic bar-time column used for start/end filtering."""
+        if self.cfg.timestamp_semantics == "open" and "open_time" in frame.columns:
+            return "open_time"
+        return "close_time"
+
     def _read_feather(self, path: str) -> pd.DataFrame:
-        """Read one feather file and normalize close_time ordering/dedup."""
+        """Read one feather file and normalize raw timestamp ordering/dedup."""
         if not osp.isfile(path):
             raise FileNotFoundError(f"Missing market data file: {path}")
         df = pd.read_feather(path)
@@ -45,8 +51,8 @@ class MarketDataLoader:
         else:
             out["timestamp"] = pd.to_datetime(out["timestamp"])
 
-        out["close_time"] = out["timestamp"].dt.tz_localize(None)
-        out = out.sort_values("close_time").drop_duplicates(subset=["close_time"], keep="last")
+        out["timestamp"] = out["timestamp"].dt.tz_localize(None)
+        out = out.sort_values("timestamp").drop_duplicates(subset=["timestamp"], keep="last")
         out = out.reset_index(drop=True)
         return out
 
@@ -59,7 +65,14 @@ class MarketDataLoader:
         base = symbol_to_filename(symbol)
         path = osp.join(self.cfg.root, f"{base}-{timeframe}.feather")
         bars = self._read_feather(path)
-        bars["open_time"] = bars["close_time"] - timeframe_to_timedelta(timeframe)
+        tf_delta = timeframe_to_timedelta(timeframe)
+        if self.cfg.timestamp_semantics == "open":
+            bars["open_time"] = bars["timestamp"]
+            bars["close_time"] = bars["timestamp"] + tf_delta
+        else:
+            bars["close_time"] = bars["timestamp"]
+            bars["open_time"] = bars["timestamp"] - tf_delta
+        bars = bars.sort_values("close_time").drop_duplicates(subset=["close_time"], keep="last").reset_index(drop=True)
         bars["timeframe"] = timeframe
         self._cache[key] = bars
         return bars
@@ -71,6 +84,8 @@ class MarketDataLoader:
         base = symbol_to_filename(symbol)
         path = osp.join(self.cfg.root, f"{base}-funding-rate.feather")
         fdf = self._read_feather(path)
+        fdf["close_time"] = fdf["timestamp"]
+        fdf = fdf.sort_values("close_time").drop_duplicates(subset=["close_time"], keep="last").reset_index(drop=True)
         if "fundingRate" not in fdf.columns:
             fdf["fundingRate"] = 0.0
         self._funding_cache[symbol] = fdf[["close_time", "fundingRate"]].copy()
@@ -82,12 +97,13 @@ class MarketDataLoader:
         start: pd.Timestamp,
         end: pd.Timestamp,
         warmup_bars: int,
+        time_col: str = "close_time",
     ) -> pd.DataFrame:
         """Slice bars into [start, end] plus a tail warmup window before start."""
-        capped = bars[bars["close_time"] <= end].copy()
-        anchor = capped[capped["close_time"] < start]
+        capped = bars[bars[time_col] <= end].copy()
+        anchor = capped[capped[time_col] < start]
         warmup = anchor.tail(max(0, warmup_bars))
-        main = capped[capped["close_time"] >= start]
+        main = capped[capped[time_col] >= start]
         out = pd.concat([warmup, main], ignore_index=True)
         out = out.sort_values("close_time").drop_duplicates(subset=["close_time"], keep="last")
         return out.reset_index(drop=True)
@@ -102,12 +118,13 @@ class MarketDataLoader:
     ) -> pd.DataFrame:
         """Return sliced bars for one symbol/timeframe with warmup."""
         full = self._get_full_bars(symbol, timeframe)
-        return self._slice_with_warmup(full, start, end, warmup_bars)
+        return self._slice_with_warmup(full, start, end, warmup_bars, time_col=self._bar_time_col(full))
 
     def get_execution_bars(self, symbol: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
         """Return execution timeframe bars in [start, end]."""
         bars = self._get_full_bars(symbol, self.cfg.exec_tf)
-        out = bars[(bars["close_time"] >= start) & (bars["close_time"] <= end)].copy()
+        time_col = self._bar_time_col(bars)
+        out = bars[(bars[time_col] >= start) & (bars[time_col] <= end)].copy()
         return out.reset_index(drop=True)
 
     def get_funding(self, symbol: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
