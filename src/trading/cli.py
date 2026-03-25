@@ -121,7 +121,7 @@ def run_backtest(args: argparse.Namespace):
     result = engine.run()
 
     out_dir = build_run_dir(cfg.output.dir, "backtest")
-    write_backtest_report(result, cfg, out_dir)
+    # write_backtest_report(result, cfg, out_dir)
 
     m = result.metrics
     print(f"Saved to: {out_dir}")

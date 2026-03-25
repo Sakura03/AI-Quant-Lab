@@ -11,12 +11,12 @@ data:
   signal_tfs: [15m, 1h]
   regime_tfs: [4h]
   start: "20230101-000000"
-  end: "20230801-000000"
+  end: "20230501-000000"
   warmup_bars: 300
-  timestamp_semantics: open
+  timestamp_semantics: close
 
 split:
-  train_months: 3
+  train_months: 1
   val_months: 1
   test_months: 1
   step_months: 1
